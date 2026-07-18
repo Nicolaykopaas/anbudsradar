@@ -1,12 +1,10 @@
 """
-Doffin lead scraper: fetch bygg-og-anlegg (CPV 45xx) notices in Trøndelag from
+Doffin lead scraper: fetch active notices in Trøndelag (all industries) from
 the Doffin Public API, with full lead detail (deadline, contact, value).
 
 Pipeline:
     1. /public/v2/search  -> broad list of active COMPETITION notices in the
-       date window. cpvCode filtering is NOT trusted server-side (API likely
-       wants exact 8-digit codes, not a "45" prefix) - filtered client-side
-       on cpvCodes starting with "45" instead.
+       date window, all industries.
     2. Client-side filter on locationId == "NO060" (Trøndelag NUTS3 code,
        confirmed against live data - see doffin_search_raw.json).
     3. /public/v2/download/{id} -> full eForms UBL XML per matched notice,
@@ -109,10 +107,6 @@ def search_all(issue_date_from: str, issue_date_to: str) -> list[dict]:
     return hits
 
 
-def is_cpv45(hit: dict) -> bool:
-    return any(str(c).startswith("45") for c in (hit.get("cpvCodes") or []))
-
-
 def is_trondelag(hit: dict) -> bool:
     return TRONDELAG_NUTS in (hit.get("locationId") or [])
 
@@ -185,10 +179,10 @@ def format_deadline(dato: str, tid: str) -> str:
 
 def write_readable_summary(rows: list[dict], path: str) -> None:
     lines = [
-        f"# Byggejobber i Trøndelag denne uka ({len(rows)} stk)",
+        f"# Offentlige jobber i Trøndelag denne uka ({len(rows)} stk)",
         "",
-        "Dette er offentlige jobber (anbud) innen bygg og anlegg som er lyst ut i Trøndelag."
-        " Byggefirmaer kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
+        "Dette er offentlige jobber (anbud) som er lyst ut i Trøndelag, uansett bransje."
+        " Bedrifter kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
         " og kontaktinfoen til personen hos oppdragsgiver som kan svare på spørsmål om den.",
         "",
     ]
@@ -231,11 +225,8 @@ def main() -> None:
     with open("doffin_search_raw.json", "w", encoding="utf-8") as f:
         json.dump(all_hits, f, ensure_ascii=False, indent=2)
 
-    cpv45_hits = [h for h in all_hits if is_cpv45(h)]
-    print(f"Herav {len(cpv45_hits)} med CPV-kode som starter pa 45 (bygg og anlegg), hele Norge.")
-
-    trondelag_hits = [h for h in cpv45_hits if is_trondelag(h)]
-    print(f"Herav {len(trondelag_hits)} i Trondelag (NUTS {TRONDELAG_NUTS}).")
+    trondelag_hits = [h for h in all_hits if is_trondelag(h)]
+    print(f"Herav {len(trondelag_hits)} i Trondelag (NUTS {TRONDELAG_NUTS}), alle bransjer.")
 
     try:
         import pandas as pd
@@ -254,9 +245,9 @@ def main() -> None:
         "location_id": "; ".join(h.get("locationId") or []),
         "er_trondelag": is_trondelag(h),
         "lenke": f"https://doffin.no/notices/{h.get('id')}" if h.get("id") else "",
-    } for h in cpv45_hits]
-    pd.DataFrame(all_rows).to_csv("doffin_notices_alle_cpv45.csv", index=False, encoding="utf-8-sig")
-    print(f"Nasjonal CPV45-oversikt lagret til doffin_notices_alle_cpv45.csv ({len(all_rows)} rader).")
+    } for h in all_hits]
+    pd.DataFrame(all_rows).to_csv("doffin_notices_alle.csv", index=False, encoding="utf-8-sig")
+    print(f"Nasjonal oversikt (alle bransjer) lagret til doffin_notices_alle.csv ({len(all_rows)} rader).")
 
     if not trondelag_hits:
         print("Ingen Trondelag-treff denne uka - ingen detaljer a hente.")
