@@ -36,16 +36,33 @@ def fetch_all_kommunenumre() -> list[str]:
     return [k["nummer"] for k in kommuner if k.get("nummer")]
 
 
-def fetch_kommune(kommunenummer: str) -> list[dict]:
-    """Fetch all matching units for a single kommune. Per-kommune keeps each
-    result set well under the API's ~10000 deep-pagination limit."""
+SAFE_RESULT_LIMIT = 9000  # stay clear of the API's ~10000 deep-pagination ceiling
+
+
+def count_matches(kommunenummer: str, fra: int, til: int) -> int:
+    params = {
+        "kommunenummer": kommunenummer,
+        "fraAntallAnsatte": fra,
+        "tilAntallAnsatte": til,
+        "size": 1,
+        "page": 0,
+    }
+    resp = requests.get(BASE_URL, params=params, headers={"Accept": "application/json"}, timeout=30)
+    resp.raise_for_status()
+    return resp.json().get("page", {}).get("totalElements", 0)
+
+
+def fetch_range(kommunenummer: str, fra: int, til: int) -> list[dict]:
+    """Fetch all units in [fra, til] ansatte for one kommune, paginating.
+    Caller is responsible for keeping the range small enough to stay under
+    the API's deep-pagination ceiling (see fetch_kommune)."""
     enheter: list[dict] = []
     page = 0
     while True:
         params = {
             "kommunenummer": kommunenummer,
-            "fraAntallAnsatte": MIN_ANSATTE,
-            "tilAntallAnsatte": MAX_ANSATTE,
+            "fraAntallAnsatte": fra,
+            "tilAntallAnsatte": til,
             "size": PAGE_SIZE,
             "page": page,
         }
@@ -66,6 +83,19 @@ def fetch_kommune(kommunenummer: str) -> list[dict]:
         time.sleep(0.2)
 
     return enheter
+
+
+def fetch_kommune(kommunenummer: str, fra: int = MIN_ANSATTE, til: int = MAX_ANSATTE) -> list[dict]:
+    """Fetch all matching units for a single kommune, splitting the ansatte
+    range further (binary-search style) whenever a bucket would exceed the
+    API's deep-pagination ceiling. Needed for a handful of very large
+    kommuner (e.g. Oslo has >10000 businesses with 1-20 ansatte alone)."""
+    total = count_matches(kommunenummer, fra, til)
+    if total <= SAFE_RESULT_LIMIT or fra >= til:
+        return fetch_range(kommunenummer, fra, til)
+
+    mid = (fra + til) // 2
+    return fetch_kommune(kommunenummer, fra, mid) + fetch_kommune(kommunenummer, mid + 1, til)
 
 
 def fetch_all(kommunenumre: list[str]) -> list[dict]:
