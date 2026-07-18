@@ -141,6 +141,21 @@ Mvh
 """
 
 
+KONTAKTET_PATH = "kontaktet.csv"
+KANDIDATER_PATH = "denne_runden_kandidater.csv"
+
+
+def load_kontaktet() -> set:
+    """Businesses already contacted in a previous run - permanently excluded
+    so nobody gets re-emailed weekly (whether they replied 'nei takk' or
+    just never responded, the rule is the same: contact once, never again
+    via this tool)."""
+    try:
+        return set(pd.read_csv(KONTAKTET_PATH)["orgnr"])
+    except FileNotFoundError:
+        return set()
+
+
 def main() -> None:
     leads_df = pd.read_csv("doffin_notices_detaljert.csv")
     biz_df = pd.read_csv("brreg_bedrifter.csv", dtype={"naeringskode": str})
@@ -149,8 +164,14 @@ def main() -> None:
     # matches either) - keep one row per orgnr.
     biz_df = biz_df.drop_duplicates(subset="orgnr")
 
+    already_kontaktet = load_kontaktet()
+    if already_kontaktet:
+        print(f"{len(already_kontaktet)} bedrifter er allerede kontaktet tidligere - utelates fra matching.")
+    biz_df = biz_df[~biz_df["orgnr"].isin(already_kontaktet)]
+
     output_lines = ["# Utkast til lead-eposter (IKKE SENDT - kun utkast for gjennomlesning)\n"]
     n_leads_with_match = 0
+    kandidater_denne_runden = []
     # Each business should get exactly ONE lead (the "one lead as a teaser"
     # model) - without this, a business matching several leads would get a
     # separate email per lead (seen live: some businesses matched 7 leads).
@@ -205,11 +226,24 @@ def main() -> None:
         output_lines.append("```")
         output_lines.append("\n---\n")
 
+        for _, biz in chosen.iterrows():
+            kandidater_denne_runden.append({
+                "orgnr": biz["orgnr"],
+                "navn": biz["navn"],
+                "epost": biz["epost"],
+                "doffin_id": row.get("doffin_id"),
+                "tittel": lead["tittel"],
+            })
+
     with open("email_drafts.md", "w", encoding="utf-8") as f:
         f.write("\n".join(output_lines))
 
+    pd.DataFrame(kandidater_denne_runden).to_csv(KANDIDATER_PATH, index=False, encoding="utf-8-sig")
+
     print(f"{n_leads_with_match} av {len(leads_df)} leads fikk minst én bransjematch.")
     print("Utkast lagret til email_drafts.md - IKKE sendt noe sted, kun tekst for gjennomlesning.")
+    print(f"{len(kandidater_denne_runden)} kandidater denne runden lagret til {KANDIDATER_PATH}.")
+    print("Nar du faktisk har sendt e-postene: kjor 'python marker_sendt.py' for a logge dem som kontaktet.")
 
 
 if __name__ == "__main__":

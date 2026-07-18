@@ -16,3 +16,8 @@ brreg_raw*.json
 brreg_bedrifter*.csv
 brreg_checkpoint*.jsonl
 brreg_fetch_log*.txt
+denne_runden_kandidater.csv
+
+# NOT regenerable - the record of who has been contacted. Back this up
+# yourself (it is not in git); losing it risks re-contacting businesses.
+kontaktet.csv
