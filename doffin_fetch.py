@@ -149,8 +149,16 @@ def parse_notice_xml(xml_text: str) -> dict:
         "estimert_verdi": value_el.text if value_el is not None else "",
         "valuta": value_el.get("currencyID") if value_el is not None else "",
         "prosedyre_type": text(root, ".//cac:TenderingProcess/cbc:ProcedureCode"),
-        "tilbudsfrist_dato": text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndDate"),
-        "tilbudsfrist_tid": text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndTime"),
+        # Two-stage restricted procedures ("kvalifikasjonsfase") use
+        # ParticipationRequestReceptionPeriod instead of a tender submission
+        # deadline - fall back to it so these notices still get a usable
+        # frist rather than showing "ikke oppgitt".
+        "tilbudsfrist_dato": (text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndDate")
+                              or text(root, ".//cac:TenderingProcess/cac:ParticipationRequestReceptionPeriod/cbc:EndDate")),
+        "tilbudsfrist_tid": (text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndTime")
+                             or text(root, ".//cac:TenderingProcess/cac:ParticipationRequestReceptionPeriod/cbc:EndTime")),
+        "er_kvalifikasjonsfase": not bool(text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndDate"))
+                                 and bool(text(root, ".//cac:TenderingProcess/cac:ParticipationRequestReceptionPeriod/cbc:EndDate")),
         "sporsmalsfrist_dato": text(root, ".//cac:TenderingProcess/cac:AdditionalInformationRequestPeriod/cbc:EndDate"),
         "sporsmalsfrist_tid": text(root, ".//cac:TenderingProcess/cac:AdditionalInformationRequestPeriod/cbc:EndTime"),
         "oppdragsgiver": buyer.get("navn", ""),
@@ -193,7 +201,8 @@ def write_readable_summary(rows: list[dict], path: str) -> None:
         lines.append(f"- **Hvem lyser ut jobben:** {r.get('oppdragsgiver', '')}")
         lines.append(f"- **Hvor:** {r.get('oppdragsgiver_adresse', '')}")
         lines.append(f"- **Hvor stor jobb (ca. verdi):** {verdi_str}")
-        lines.append(f"- **Frist for å sende tilbud:** {format_deadline(r.get('tilbudsfrist_dato', ''), r.get('tilbudsfrist_tid', ''))}")
+        frist_label = "Frist for å melde interesse" if r.get("er_kvalifikasjonsfase") else "Frist for å sende tilbud"
+        lines.append(f"- **{frist_label}:** {format_deadline(r.get('tilbudsfrist_dato', ''), r.get('tilbudsfrist_tid', ''))}")
         sporsmal = format_deadline(r.get('sporsmalsfrist_dato', ''), r.get('sporsmalsfrist_tid', ''))
         if sporsmal != "Ikke oppgitt":
             lines.append(f"- **Frist for å stille spørsmål:** {sporsmal}")
