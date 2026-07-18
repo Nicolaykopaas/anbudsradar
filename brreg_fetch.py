@@ -187,6 +187,21 @@ def main() -> None:
     if os.path.exists(CHECKPOINT_PATH):
         os.remove(CHECKPOINT_PATH)  # full run succeeded - don't resume stale data next time
 
+    # A business can appear twice across kommune-by-kommune fetches if its
+    # forretningsadresse and postadresse are in different kommuner (the
+    # kommunenummer filter matches either address) - keep one per orgnr.
+    seen_orgnr = set()
+    deduped = []
+    for e in all_enheter:
+        orgnr = e.get("organisasjonsnummer")
+        if orgnr in seen_orgnr:
+            continue
+        seen_orgnr.add(orgnr)
+        deduped.append(e)
+    if len(deduped) < len(all_enheter):
+        print(f"Fjernet {len(all_enheter) - len(deduped)} duplikater (samme orgnr i flere kommunesok).")
+    all_enheter = deduped
+
     with_email = [e for e in all_enheter if e.get("epostadresse")]
     print(f"Herav {len(with_email)} med epostadresse utfylt ({100 * len(with_email) / max(len(all_enheter), 1):.0f}%).")
 

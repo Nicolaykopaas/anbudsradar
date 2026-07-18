@@ -139,9 +139,17 @@ Mvh
 def main() -> None:
     leads_df = pd.read_csv("doffin_notices_detaljert.csv")
     biz_df = pd.read_csv("brreg_smabedrifter.csv", dtype={"naeringskode": str})
+    # A business can appear twice in the Brreg fetch if its forretningsadresse
+    # and postadresse are in different kommuner (the kommunenummer filter
+    # matches either) - keep one row per orgnr.
+    biz_df = biz_df.drop_duplicates(subset="orgnr")
 
     output_lines = ["# Utkast til lead-eposter (IKKE SENDT - kun utkast for gjennomlesning)\n"]
     n_leads_with_match = 0
+    # Each business should get exactly ONE lead (the "one lead as a teaser"
+    # model) - without this, a business matching several leads would get a
+    # separate email per lead (seen live: some businesses matched 7 leads).
+    used_orgnr: set = set()
 
     for _, row in leads_df.iterrows():
         divisions = nace_divisions_for_cpv(row.get("cpv_primaer"))
@@ -149,6 +157,7 @@ def main() -> None:
             continue
 
         candidates = biz_df[biz_df["naeringskode"].apply(lambda k: matches_nace(k, divisions))]
+        candidates = candidates[~candidates["orgnr"].isin(used_orgnr)]
 
         poststed = str(row.get("oppdragsgiver_adresse", "")).split(",")[-1].strip().upper()
         local = candidates[candidates["kommune"].astype(str).str.upper() == poststed]
@@ -163,6 +172,7 @@ def main() -> None:
         if len(chosen) == 0:
             continue
 
+        used_orgnr.update(chosen["orgnr"])
         n_leads_with_match += 1
         lead = {
             "tittel": row.get("tittel", "(uten tittel)"),
