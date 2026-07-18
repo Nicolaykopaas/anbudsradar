@@ -184,25 +184,29 @@ def format_deadline(dato: str, tid: str) -> str:
 
 
 def write_readable_summary(rows: list[dict], path: str) -> None:
-    lines = [f"# Bygg-og-anlegg-leads i Trøndelag ({len(rows)} stk)\n"]
+    lines = [
+        f"# Byggejobber i Trøndelag denne uka ({len(rows)} stk)",
+        "",
+        "Dette er offentlige jobber (anbud) innen bygg og anlegg som er lyst ut i Trøndelag."
+        " Byggefirmaer kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
+        " og kontaktinfoen til personen hos oppdragsgiver som kan svare på spørsmål om den.",
+        "",
+    ]
     for r in rows:
         verdi = r.get("estimert_verdi")
-        verdi_str = f"{int(float(verdi)):,} {r.get('valuta', '')}".replace(",", " ") if verdi and str(verdi) != "nan" else "Ikke oppgitt"
+        verdi_str = f"ca. {int(float(verdi)):,} kr".replace(",", " ") if verdi and str(verdi) != "nan" else "Ikke oppgitt"
         beskrivelse = (r.get("beskrivelse") or "").strip()
         if len(beskrivelse) > 400:
             beskrivelse = beskrivelse[:400].rsplit(" ", 1)[0] + " ..."
 
         lines.append(f"## {r.get('tittel', '(uten tittel)')}")
         lines.append("")
-        lines.append(f"- **Oppdragsgiver:** {r.get('oppdragsgiver', '')} (org.nr {r.get('oppdragsgiver_orgnr', '')})")
-        lines.append(f"- **Adresse:** {r.get('oppdragsgiver_adresse', '')}")
-        lines.append(f"- **Estimert verdi:** {verdi_str}")
-        lines.append(f"- **Tilbudsfrist:** {format_deadline(r.get('tilbudsfrist_dato', ''), r.get('tilbudsfrist_tid', ''))}")
-        lines.append(f"- **CPV (primær):** {r.get('cpv_primaer', '')}")
-        if r.get("cpv_tillegg"):
-            lines.append(f"- **CPV (tillegg):** {r.get('cpv_tillegg')}")
-        lines.append(f"- **Kontakt:** {r.get('kontakt_navn', '')} — {r.get('kontakt_telefon', '')} — {r.get('kontakt_epost', '')}")
-        lines.append(f"- **Lenke:** {r.get('lenke', '')}")
+        lines.append(f"- **Hvem lyser ut jobben:** {r.get('oppdragsgiver', '')}")
+        lines.append(f"- **Hvor:** {r.get('oppdragsgiver_adresse', '')}")
+        lines.append(f"- **Hvor stor jobb (ca. verdi):** {verdi_str}")
+        lines.append(f"- **Frist for å sende tilbud:** {format_deadline(r.get('tilbudsfrist_dato', ''), r.get('tilbudsfrist_tid', ''))}")
+        lines.append(f"- **Kontaktperson for spørsmål:** {r.get('kontakt_navn', '')} — {r.get('kontakt_telefon', '')} — {r.get('kontakt_epost', '')}")
+        lines.append(f"- **Se hele kunngjøringen:** {r.get('lenke', '')}")
         if beskrivelse:
             lines.append("")
             lines.append(f"> {beskrivelse}")
@@ -249,7 +253,7 @@ def main() -> None:
         "publisert_dato": h.get("publicationDate"),
         "location_id": "; ".join(h.get("locationId") or []),
         "er_trondelag": is_trondelag(h),
-        "lenke": f"https://www.doffin.no/notice/{h.get('id')}" if h.get("id") else "",
+        "lenke": f"https://doffin.no/notices/{h.get('id')}" if h.get("id") else "",
     } for h in cpv45_hits]
     pd.DataFrame(all_rows).to_csv("doffin_notices_alle_cpv45.csv", index=False, encoding="utf-8-sig")
     print(f"Nasjonal CPV45-oversikt lagret til doffin_notices_alle_cpv45.csv ({len(all_rows)} rader).")
@@ -269,7 +273,7 @@ def main() -> None:
         except Exception as e:
             print(f"    Klarte ikke hente/parse {doffin_id}: {e}")
             parsed = {}
-        row = {"doffin_id": doffin_id, "lenke": f"https://www.doffin.no/notice/{doffin_id}"}
+        row = {"doffin_id": doffin_id, "lenke": f"https://doffin.no/notices/{doffin_id}"}
         row.update(parsed)
         detailed_rows.append(row)
         time.sleep(0.5)
