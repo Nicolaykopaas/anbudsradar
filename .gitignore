@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# Generated data dumps - regenerate with: python doffin_fetch.py
+doffin_notices*.csv
+doffin_search_raw.json
+doffin_detail_raw.json
+doffin_trondelag_leads.md
+sample_notice.xml
