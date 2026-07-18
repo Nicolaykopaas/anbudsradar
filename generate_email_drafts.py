@@ -152,8 +152,13 @@ def main() -> None:
 
         poststed = str(row.get("oppdragsgiver_adresse", "")).split(",")[-1].strip().upper()
         local = candidates[candidates["kommune"].astype(str).str.upper() == poststed]
-        chosen = local if len(local) > 0 else candidates
-        chosen = chosen.head(MAX_BUSINESSES_PER_LEAD)
+        if len(local) > 0:
+            chosen = local.head(MAX_BUSINESSES_PER_LEAD)
+        else:
+            # No kommune match - sample randomly from the nationwide bransje
+            # match instead of always picking the same alphabetically-first
+            # rows (candidates is otherwise returned in fixed CSV order).
+            chosen = candidates.sample(n=min(MAX_BUSINESSES_PER_LEAD, len(candidates)))
 
         if len(chosen) == 0:
             continue
