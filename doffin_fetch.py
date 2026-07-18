@@ -28,6 +28,7 @@ import requests
 
 SEARCH_URL = "https://api.doffin.no/public/v2/search"
 DOWNLOAD_URL = "https://api.doffin.no/public/v2/download/{doffin_id}"
+BRREG_ENHET_URL = "https://data.brreg.no/enhetsregisteret/api/enheter/{orgnr}"
 API_KEY = os.environ.get("DOFFIN_API_KEY")
 
 DAYS_BACK = 7
@@ -172,6 +173,30 @@ def parse_notice_xml(xml_text: str) -> dict:
     }
 
 
+def fetch_buyer_kommunenummer(orgnr: str, cache: dict) -> str:
+    """Look up a buyer's forretningsadresse.kommunenummer via Brreg's public,
+    unauthenticated Enhetsregisteret API (already used by brreg_fetch.py -
+    same free data source, no new dependency). Cached per orgnr within a run
+    since many notices share the same buyer. Returns "" if not found (e.g.
+    embassies/foreign bodies or non-standard registrations)."""
+    if not orgnr:
+        return ""
+    if orgnr in cache:
+        return cache[orgnr]
+
+    try:
+        resp = requests.get(BRREG_ENHET_URL.format(orgnr=orgnr), headers={"Accept": "application/json"}, timeout=15)
+        if resp.ok:
+            kommunenummer = (resp.json().get("forretningsadresse") or {}).get("kommunenummer", "")
+        else:
+            kommunenummer = ""
+    except requests.exceptions.RequestException:
+        kommunenummer = ""
+
+    cache[orgnr] = kommunenummer
+    return kommunenummer
+
+
 def format_deadline(dato: str, tid: str) -> str:
     if not dato:
         return "Ikke oppgitt"
@@ -271,6 +296,13 @@ def main() -> None:
         row.update(parsed)
         detailed_rows.append(row)
         time.sleep(0.5)
+
+    print(f"\nSteg 3: slar opp oppdragsgivers kommunenummer (for bedre geografisk matching) ...")
+    kommunenummer_cache: dict = {}
+    for row in detailed_rows:
+        row["oppdragsgiver_kommunenummer"] = fetch_buyer_kommunenummer(row.get("oppdragsgiver_orgnr", ""), kommunenummer_cache)
+    n_med_kommunenummer = sum(1 for row in detailed_rows if row["oppdragsgiver_kommunenummer"])
+    print(f"  {len(kommunenummer_cache)} unike oppdragsgivere slatt opp, {n_med_kommunenummer}/{len(detailed_rows)} kunngjoringer fikk kommunenummer.")
 
     df = pd.DataFrame(detailed_rows)
     csv_path = "doffin_notices_detaljert.csv"

@@ -21,3 +21,7 @@ denne_runden_kandidater.csv
 # NOT regenerable - the record of who has been contacted. Back this up
 # yourself (it is not in git); losing it risks re-contacting businesses.
 kontaktet.csv
+
+# Generated data dumps - regenerate with: python compute_scores.py
+lead_bedrift_scores.csv
+streamlit_log*.txt

@@ -223,15 +223,21 @@ def main() -> None:
     for e in with_email:
         addr = e.get("forretningsadresse") or {}
         naering = e.get("naeringskode1") or {}
+        orgform = e.get("organisasjonsform") or {}
         rows.append({
             "orgnr": e.get("organisasjonsnummer"),
             "navn": e.get("navn"),
             "bransje": naering.get("beskrivelse"),
             "naeringskode": naering.get("kode"),
             "kommune": addr.get("kommune"),
+            "kommunenummer": addr.get("kommunenummer"),
             "poststed": addr.get("poststed"),
+            "postnummer": addr.get("postnummer"),
             "adresse": ", ".join(addr.get("adresse") or []),
             "antall_ansatte": e.get("antallAnsatte"),
+            "organisasjonsform": orgform.get("kode"),
+            "stiftelsesdato": e.get("stiftelsesdato"),
+            "registreringsdato": e.get("registreringsdatoEnhetsregisteret"),
             "epost": e.get("epostadresse"),
             "telefon": e.get("telefon"),
             "mobil": e.get("mobil"),

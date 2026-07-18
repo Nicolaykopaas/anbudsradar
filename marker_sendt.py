@@ -17,6 +17,27 @@ import pandas as pd
 
 KANDIDATER_PATH = "denne_runden_kandidater.csv"
 KONTAKTET_PATH = "kontaktet.csv"
+KOLONNER = ["orgnr", "navn", "epost", "doffin_id", "tittel", "dato_kontaktet"]
+
+
+def append_to_kontaktet(rader: pd.DataFrame) -> pd.DataFrame:
+    """Legger radene til i kontaktet.csv (permanent, deduplisert pa orgnr,
+    forste oppforing vinner). Brukes bade av CLI-en under og av app.py sin
+    'Marker som sendt'-knapp - selve regelen (kontakt en gang, aldri igjen)
+    bor bare finnes ett sted."""
+    rader = rader.copy()
+    rader["dato_kontaktet"] = date.today().isoformat()
+    rader = rader[KOLONNER]
+
+    try:
+        eksisterende = pd.read_csv(KONTAKTET_PATH)
+        kombinert = pd.concat([eksisterende, rader], ignore_index=True)
+        kombinert = kombinert.drop_duplicates(subset="orgnr", keep="first")
+    except FileNotFoundError:
+        kombinert = rader
+
+    kombinert.to_csv(KONTAKTET_PATH, index=False, encoding="utf-8-sig")
+    return kombinert
 
 
 def main() -> None:
@@ -30,17 +51,7 @@ def main() -> None:
         print("Ingen kandidater a markere.")
         return
 
-    kandidater["dato_kontaktet"] = date.today().isoformat()
-    kolonner = ["orgnr", "navn", "epost", "doffin_id", "tittel", "dato_kontaktet"]
-
-    try:
-        eksisterende = pd.read_csv(KONTAKTET_PATH)
-        kombinert = pd.concat([eksisterende, kandidater[kolonner]], ignore_index=True)
-        kombinert = kombinert.drop_duplicates(subset="orgnr", keep="first")
-    except FileNotFoundError:
-        kombinert = kandidater[kolonner]
-
-    kombinert.to_csv(KONTAKTET_PATH, index=False, encoding="utf-8-sig")
+    kombinert = append_to_kontaktet(kandidater)
     print(f"{len(kandidater)} bedrifter lagt til i {KONTAKTET_PATH} (totalt {len(kombinert)} noensinne kontaktet).")
     print("De vil ikke bli foreslatt igjen av generate_email_drafts.py.")
 
