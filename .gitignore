@@ -7,3 +7,7 @@ doffin_search_raw.json
 doffin_detail_raw.json
 doffin_trondelag_leads.md
 sample_notice.xml
+
+# Generated data dumps - regenerate with: python brreg_fetch.py
+brreg_raw.json
+brreg_trondelag_smabedrifter.csv
