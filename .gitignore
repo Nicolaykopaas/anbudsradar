@@ -11,8 +11,8 @@ sample_notice.xml
 email_drafts.md
 eksempel_epost.md
 
-# Generated data dumps - regenerate with: python brreg_fetch.py
-brreg_raw.json
-brreg_smabedrifter.csv
-brreg_checkpoint.jsonl
-brreg_fetch_log.txt
+# Generated data dumps - regenerate with: python brreg_fetch.py + merge_brreg_ranges.py
+brreg_raw*.json
+brreg_bedrifter*.csv
+brreg_checkpoint*.jsonl
+brreg_fetch_log*.txt

@@ -1,5 +1,5 @@
 """
-Brønnøysundregisteret lead-target fetcher: small businesses (1-20 ansatte)
+Brønnøysundregisteret lead-target fetcher: small and medium businesses (SMB)
 nationwide that have a registered email address, ready to cold-email with a
 Doffin lead as a teaser.
 
@@ -12,8 +12,15 @@ Fetches kommune-by-kommune (not one big nationwide query) because the API
 rejects deep pagination past ~10000 results for a single query - no single
 kommune comes close to that.
 
+The ansatte (employee count) range is configurable via env vars, so the
+small-business band (1-20) and the medium-business band (21-100) can be
+fetched as separate runs without re-doing already-completed work - each
+range gets its own checkpoint/output files, merged afterwards with
+merge_brreg_ranges.py.
+
 Usage:
-    python brreg_fetch.py
+    python brreg_fetch.py                                    # default 1-20
+    BRREG_MIN_ANSATTE=21 BRREG_MAX_ANSATTE=100 python brreg_fetch.py
 """
 
 import json
@@ -26,10 +33,11 @@ BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter"
 KOMMUNER_URL = "https://data.brreg.no/enhetsregisteret/api/kommuner"
 ORG_FORMER_URL = "https://data.brreg.no/enhetsregisteret/api/organisasjonsformer"
 PAGE_SIZE = 100
-CHECKPOINT_PATH = "brreg_checkpoint.jsonl"
 
-MIN_ANSATTE = 1
-MAX_ANSATTE = 20
+MIN_ANSATTE = int(os.environ.get("BRREG_MIN_ANSATTE", 1))
+MAX_ANSATTE = int(os.environ.get("BRREG_MAX_ANSATTE", 20))
+RANGE_SUFFIX = f"{MIN_ANSATTE}-{MAX_ANSATTE}"
+CHECKPOINT_PATH = f"brreg_checkpoint_{RANGE_SUFFIX}.jsonl"
 
 # tilAntallAnsatte/fraAntallAnsatte only accept 0, 4 (til) / 0, 1 (fra), or any
 # value > 4 - so the [1,4] band can never be split further by ansatte alone.
@@ -177,11 +185,11 @@ def main() -> None:
 
     org_former = fetch_all_organisasjonsformer()
 
-    print(f"Henter smabedrifter ({MIN_ANSATTE}-{MAX_ANSATTE} ansatte) nasjonalt ...")
+    print(f"Henter bedrifter ({MIN_ANSATTE}-{MAX_ANSATTE} ansatte) nasjonalt ...")
     all_enheter = fetch_all(kommunenumre, org_former)
     print(f"\nTotalt {len(all_enheter)} enheter hentet.")
 
-    with open("brreg_raw.json", "w", encoding="utf-8") as f:
+    with open(f"brreg_raw_{RANGE_SUFFIX}.json", "w", encoding="utf-8") as f:
         json.dump(all_enheter, f, ensure_ascii=False, indent=2)
 
     if os.path.exists(CHECKPOINT_PATH):
@@ -231,7 +239,7 @@ def main() -> None:
         })
 
     df = pd.DataFrame(rows)
-    csv_path = "brreg_smabedrifter.csv"
+    csv_path = f"brreg_bedrifter_{RANGE_SUFFIX}.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"CSV lagret til {csv_path} ({len(df)} rader).")
 

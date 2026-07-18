@@ -3,7 +3,7 @@ Match Doffin leads to relevant Brreg businesses (by bransje + kommune) and
 write draft cold-emails to a file for manual review. NOTHING is sent - this
 only generates text you can copy into your own email client.
 
-Requires doffin_notices_detaljert.csv and brreg_smabedrifter.csv to already
+Requires doffin_notices_detaljert.csv and brreg_bedrifter.csv to already
 exist (run doffin_fetch.py and brreg_fetch.py first).
 
 Usage:
@@ -143,7 +143,7 @@ Mvh
 
 def main() -> None:
     leads_df = pd.read_csv("doffin_notices_detaljert.csv")
-    biz_df = pd.read_csv("brreg_smabedrifter.csv", dtype={"naeringskode": str})
+    biz_df = pd.read_csv("brreg_bedrifter.csv", dtype={"naeringskode": str})
     # A business can appear twice in the Brreg fetch if its forretningsadresse
     # and postadresse are in different kommuner (the kommunenummer filter
     # matches either) - keep one row per orgnr.
