@@ -1,15 +1,13 @@
 """
-Doffin lead scraper: fetch active notices in Trøndelag (all industries) from
+Doffin lead scraper: fetch active notices nationwide (all industries) from
 the Doffin Public API, with full lead detail (deadline, contact, value).
 
 Pipeline:
     1. /public/v2/search  -> broad list of active COMPETITION notices in the
-       date window, all industries.
-    2. Client-side filter on locationId == "NO060" (Trøndelag NUTS3 code,
-       confirmed against live data - see doffin_search_raw.json).
-    3. /public/v2/download/{id} -> full eForms UBL XML per matched notice,
-       parsed for: buyer contact (name/phone/email), tender deadline,
-       estimated value, primary+additional CPV, buyer org.nr/address.
+       date window, all industries, all of Norway.
+    2. /public/v2/download/{id} -> full eForms UBL XML per notice, parsed for:
+       buyer contact (name/phone/email), tender deadline, estimated value,
+       primary+additional CPV, buyer org.nr/address.
 
 Setup:
     setx DOFFIN_API_KEY "your-subscription-key"     # Windows, restart shell after
@@ -34,7 +32,6 @@ API_KEY = os.environ.get("DOFFIN_API_KEY")
 
 DAYS_BACK = 7
 PAGE_SIZE = 100
-TRONDELAG_NUTS = "NO060"
 
 NS = {
     "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
@@ -107,10 +104,6 @@ def search_all(issue_date_from: str, issue_date_to: str) -> list[dict]:
     return hits
 
 
-def is_trondelag(hit: dict) -> bool:
-    return TRONDELAG_NUTS in (hit.get("locationId") or [])
-
-
 def parse_notice_xml(xml_text: str) -> dict:
     root = ET.fromstring(xml_text)
 
@@ -179,9 +172,9 @@ def format_deadline(dato: str, tid: str) -> str:
 
 def write_readable_summary(rows: list[dict], path: str) -> None:
     lines = [
-        f"# Offentlige jobber i Trøndelag denne uka ({len(rows)} stk)",
+        f"# Offentlige jobber i Norge denne uka ({len(rows)} stk)",
         "",
-        "Dette er offentlige jobber (anbud) som er lyst ut i Trøndelag, uansett bransje."
+        "Dette er offentlige jobber (anbud) som er lyst ut i Norge, uansett bransje."
         " Bedrifter kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
         " og kontaktinfoen til personen hos oppdragsgiver som kan svare på spørsmål om den.",
         "",
@@ -225,9 +218,6 @@ def main() -> None:
     with open("doffin_search_raw.json", "w", encoding="utf-8") as f:
         json.dump(all_hits, f, ensure_ascii=False, indent=2)
 
-    trondelag_hits = [h for h in all_hits if is_trondelag(h)]
-    print(f"Herav {len(trondelag_hits)} i Trondelag (NUTS {TRONDELAG_NUTS}), alle bransjer.")
-
     try:
         import pandas as pd
     except ImportError:
@@ -243,21 +233,20 @@ def main() -> None:
         "valuta": (h.get("estimatedValue") or {}).get("currencyCode"),
         "publisert_dato": h.get("publicationDate"),
         "location_id": "; ".join(h.get("locationId") or []),
-        "er_trondelag": is_trondelag(h),
         "lenke": f"https://doffin.no/notices/{h.get('id')}" if h.get("id") else "",
     } for h in all_hits]
     pd.DataFrame(all_rows).to_csv("doffin_notices_alle.csv", index=False, encoding="utf-8-sig")
     print(f"Nasjonal oversikt (alle bransjer) lagret til doffin_notices_alle.csv ({len(all_rows)} rader).")
 
-    if not trondelag_hits:
-        print("Ingen Trondelag-treff denne uka - ingen detaljer a hente.")
+    if not all_hits:
+        print("Ingen treff denne uka - ingen detaljer a hente.")
         return
 
-    print(f"\nSteg 2: henter og parser full detalj for {len(trondelag_hits)} Trondelag-treff ...")
+    print(f"\nSteg 2: henter og parser full detalj for {len(all_hits)} treff ...")
     detailed_rows = []
-    for i, h in enumerate(trondelag_hits, 1):
+    for i, h in enumerate(all_hits, 1):
         doffin_id = h.get("id")
-        print(f"  [{i}/{len(trondelag_hits)}] {doffin_id}")
+        print(f"  [{i}/{len(all_hits)}] {doffin_id}")
         try:
             xml_text = api_get_xml(DOWNLOAD_URL.format(doffin_id=doffin_id))
             parsed = parse_notice_xml(xml_text)
@@ -270,13 +259,13 @@ def main() -> None:
         time.sleep(0.5)
 
     df = pd.DataFrame(detailed_rows)
-    csv_path = "doffin_notices_trondelag_detaljert.csv"
+    csv_path = "doffin_notices_detaljert.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"\nDetaljert Trondelag-CSV lagret til {csv_path} ({len(df)} rader).")
+    print(f"\nDetaljert CSV lagret til {csv_path} ({len(df)} rader).")
     n_with_email = (df["kontakt_epost"] != "").sum() if "kontakt_epost" in df else 0
     print(f"Herav {n_with_email} med kontakt-epost fylt ut.")
 
-    md_path = "doffin_trondelag_leads.md"
+    md_path = "doffin_leads.md"
     write_readable_summary(detailed_rows, md_path)
     print(f"Lesbar oppsummering lagret til {md_path} - apne den for et raskt overblikk.")
 

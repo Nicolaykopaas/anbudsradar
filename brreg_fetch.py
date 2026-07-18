@@ -1,12 +1,16 @@
 """
-Brønnøysundregisteret lead-target fetcher: small businesses (1-20 ansatte) in
-Trøndelag that have a registered email address, ready to cold-email with a
+Brønnøysundregisteret lead-target fetcher: small businesses (1-20 ansatte)
+nationwide that have a registered email address, ready to cold-email with a
 Doffin lead as a teaser.
 
 No API key needed - data.brreg.no/enhetsregisteret is a public, unauthenticated
-API. Only ~18% of small Trøndelag businesses have epostadresse filled in
-(checked live 2026-07-18), so this script keeps only those - no website
-scraping fallback for now.
+API. Only ~30% of small businesses have epostadresse filled in (checked live
+against Trøndelag on 2026-07-18), so this script keeps only those - no
+website scraping fallback for now.
+
+Fetches kommune-by-kommune (not one big nationwide query) because the API
+rejects deep pagination past ~10000 results for a single query - no single
+kommune comes close to that.
 
 Usage:
     python brreg_fetch.py
@@ -18,20 +22,18 @@ import time
 import requests
 
 BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter"
+KOMMUNER_URL = "https://data.brreg.no/enhetsregisteret/api/kommuner"
 PAGE_SIZE = 100
 
 MIN_ANSATTE = 1
 MAX_ANSATTE = 20
 
-# All 38 Trøndelag kommunenummer (fylkenummer 50), confirmed live via
-# data.brreg.no/enhetsregisteret/api/kommuner on 2026-07-18.
-TRONDELAG_KOMMUNER = [
-    "5001", "5006", "5007", "5014", "5020", "5021", "5022", "5025", "5026",
-    "5027", "5028", "5029", "5031", "5032", "5033", "5034", "5035", "5036",
-    "5037", "5038", "5041", "5042", "5043", "5044", "5045", "5046", "5047",
-    "5049", "5052", "5053", "5054", "5055", "5056", "5057", "5058", "5059",
-    "5060", "5061",
-]
+
+def fetch_all_kommunenumre() -> list[str]:
+    resp = requests.get(KOMMUNER_URL, params={"size": 500}, headers={"Accept": "application/json"}, timeout=30)
+    resp.raise_for_status()
+    kommuner = resp.json().get("_embedded", {}).get("kommuner", [])
+    return [k["nummer"] for k in kommuner if k.get("nummer")]
 
 
 def fetch_kommune(kommunenummer: str) -> list[dict]:
@@ -66,18 +68,22 @@ def fetch_kommune(kommunenummer: str) -> list[dict]:
     return enheter
 
 
-def fetch_all() -> list[dict]:
+def fetch_all(kommunenumre: list[str]) -> list[dict]:
     enheter: list[dict] = []
-    for kommunenummer in TRONDELAG_KOMMUNER:
+    for i, kommunenummer in enumerate(kommunenumre, 1):
         kommune_enheter = fetch_kommune(kommunenummer)
         enheter.extend(kommune_enheter)
-        print(f"  kommune {kommunenummer}: +{len(kommune_enheter)} (totalt sett {len(enheter)})")
+        print(f"  [{i}/{len(kommunenumre)}] kommune {kommunenummer}: +{len(kommune_enheter)} (totalt sett {len(enheter)})")
     return enheter
 
 
 def main() -> None:
-    print(f"Henter smabedrifter ({MIN_ANSATTE}-{MAX_ANSATTE} ansatte) i {len(TRONDELAG_KOMMUNER)} Trondelag-kommuner ...")
-    all_enheter = fetch_all()
+    print("Henter liste over alle norske kommuner ...")
+    kommunenumre = fetch_all_kommunenumre()
+    print(f"Fant {len(kommunenumre)} kommuner.")
+
+    print(f"Henter smabedrifter ({MIN_ANSATTE}-{MAX_ANSATTE} ansatte) nasjonalt ...")
+    all_enheter = fetch_all(kommunenumre)
     print(f"\nTotalt {len(all_enheter)} enheter hentet.")
 
     with open("brreg_raw.json", "w", encoding="utf-8") as f:
@@ -112,7 +118,7 @@ def main() -> None:
         })
 
     df = pd.DataFrame(rows)
-    csv_path = "brreg_trondelag_smabedrifter.csv"
+    csv_path = "brreg_smabedrifter.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"CSV lagret til {csv_path} ({len(df)} rader).")
 
