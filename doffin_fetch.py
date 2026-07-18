@@ -151,6 +151,8 @@ def parse_notice_xml(xml_text: str) -> dict:
         "prosedyre_type": text(root, ".//cac:TenderingProcess/cbc:ProcedureCode"),
         "tilbudsfrist_dato": text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndDate"),
         "tilbudsfrist_tid": text(root, ".//cac:TenderingProcess/cac:TenderSubmissionDeadlinePeriod/cbc:EndTime"),
+        "sporsmalsfrist_dato": text(root, ".//cac:TenderingProcess/cac:AdditionalInformationRequestPeriod/cbc:EndDate"),
+        "sporsmalsfrist_tid": text(root, ".//cac:TenderingProcess/cac:AdditionalInformationRequestPeriod/cbc:EndTime"),
         "oppdragsgiver": buyer.get("navn", ""),
         "oppdragsgiver_orgnr": buyer.get("orgnr", ""),
         "oppdragsgiver_adresse": ", ".join(
@@ -192,6 +194,9 @@ def write_readable_summary(rows: list[dict], path: str) -> None:
         lines.append(f"- **Hvor:** {r.get('oppdragsgiver_adresse', '')}")
         lines.append(f"- **Hvor stor jobb (ca. verdi):** {verdi_str}")
         lines.append(f"- **Frist for å sende tilbud:** {format_deadline(r.get('tilbudsfrist_dato', ''), r.get('tilbudsfrist_tid', ''))}")
+        sporsmal = format_deadline(r.get('sporsmalsfrist_dato', ''), r.get('sporsmalsfrist_tid', ''))
+        if sporsmal != "Ikke oppgitt":
+            lines.append(f"- **Frist for å stille spørsmål:** {sporsmal}")
         lines.append(f"- **Kontaktperson for spørsmål:** {r.get('kontakt_navn', '')} — {r.get('kontakt_telefon', '')} — {r.get('kontakt_epost', '')}")
         lines.append(f"- **Se hele kunngjøringen:** {r.get('lenke', '')}")
         if beskrivelse:

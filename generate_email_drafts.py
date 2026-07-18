@@ -115,6 +115,7 @@ def format_frist(dato, tid) -> str:
 
 
 def draft_email(business_navn: str, lead: dict) -> str:
+    sporsmal_linje = f"Frist for å stille spørsmål: {lead['sporsmalsfrist']}\n" if lead.get("sporsmalsfrist") else ""
     return f"""Emne: Offentlig anbud som kan passe for {business_navn}
 
 Hei,
@@ -124,7 +125,7 @@ Jeg fant en offentlig anskaffelse som kan være aktuell for dere:
 "{lead['tittel']}"
 Oppdragsgiver: {lead['oppdragsgiver']}
 Frist for å sende tilbud: {lead['frist']}
-Antatt størrelse: {lead['verdi']}
+{sporsmal_linje}Antatt størrelse: {lead['verdi']}
 Hele kunngjøringen: {lead['lenke']}
 
 Jeg sender ut denne typen relevante anbud fortløpende til bedrifter i bransjen.
@@ -162,9 +163,12 @@ def main() -> None:
             "tittel": row.get("tittel", "(uten tittel)"),
             "oppdragsgiver": row.get("oppdragsgiver", ""),
             "frist": format_frist(row.get("tilbudsfrist_dato"), row.get("tilbudsfrist_tid")),
+            "sporsmalsfrist": format_frist(row.get("sporsmalsfrist_dato"), row.get("sporsmalsfrist_tid")),
             "verdi": format_verdi(row.get("estimert_verdi"), row.get("valuta")),
             "lenke": row.get("lenke", ""),
         }
+        if lead["sporsmalsfrist"] == "ikke oppgitt":
+            lead["sporsmalsfrist"] = ""
 
         output_lines.append(f"## {lead['tittel']}")
         output_lines.append(f"CPV {row.get('cpv_primaer')} -> næringskode-divisjoner {divisions}"

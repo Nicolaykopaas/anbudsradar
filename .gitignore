@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.claude/
 
 # Generated data dumps - regenerate with: python doffin_fetch.py
 doffin_notices*.csv
@@ -7,8 +8,11 @@ doffin_search_raw.json
 doffin_detail_raw.json
 doffin_leads.md
 sample_notice.xml
+email_drafts.md
+eksempel_epost.md
 
 # Generated data dumps - regenerate with: python brreg_fetch.py
 brreg_raw.json
 brreg_smabedrifter.csv
+brreg_checkpoint.jsonl
 brreg_fetch_log.txt

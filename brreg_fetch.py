@@ -17,93 +17,156 @@ Usage:
 """
 
 import json
+import os
 import time
 
 import requests
 
 BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter"
 KOMMUNER_URL = "https://data.brreg.no/enhetsregisteret/api/kommuner"
+ORG_FORMER_URL = "https://data.brreg.no/enhetsregisteret/api/organisasjonsformer"
 PAGE_SIZE = 100
+CHECKPOINT_PATH = "brreg_checkpoint.jsonl"
 
 MIN_ANSATTE = 1
 MAX_ANSATTE = 20
 
-
-def fetch_all_kommunenumre() -> list[str]:
-    resp = requests.get(KOMMUNER_URL, params={"size": 500}, headers={"Accept": "application/json"}, timeout=30)
-    resp.raise_for_status()
-    kommuner = resp.json().get("_embedded", {}).get("kommuner", [])
-    return [k["nummer"] for k in kommuner if k.get("nummer")]
-
-
-SAFE_RESULT_LIMIT = 9000  # stay clear of the API's ~10000 deep-pagination ceiling
+# tilAntallAnsatte/fraAntallAnsatte only accept 0, 4 (til) / 0, 1 (fra), or any
+# value > 4 - so the [1,4] band can never be split further by ansatte alone.
+# Falls back to organisasjonsform, then naeringskode (2-digit division), for
+# the handful of large kommuner where even [1,4] alone exceeds the API's
+# deep-pagination ceiling (e.g. Oslo: 17708 units with 1-4 ansatte).
+SAFE_RESULT_LIMIT = 9000
 
 
-def count_matches(kommunenummer: str, fra: int, til: int) -> int:
-    params = {
-        "kommunenummer": kommunenummer,
-        "fraAntallAnsatte": fra,
-        "tilAntallAnsatte": til,
-        "size": 1,
-        "page": 0,
-    }
-    resp = requests.get(BASE_URL, params=params, headers={"Accept": "application/json"}, timeout=30)
-    resp.raise_for_status()
-    return resp.json().get("page", {}).get("totalElements", 0)
+def get_with_retry(url: str, params: dict, max_retries: int = 5):
+    """GET with retry/backoff for both HTTP 429 and transient network errors
+    (connection resets etc. - seen live on long nationwide runs)."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=30)
+        except requests.exceptions.RequestException as e:
+            if attempt == max_retries:
+                raise
+            wait = min(30, 2 ** attempt)
+            print(f"    Nettverksfeil ({e.__class__.__name__}), forsok {attempt}/{max_retries}, venter {wait}s...")
+            time.sleep(wait)
+            continue
 
-
-def fetch_range(kommunenummer: str, fra: int, til: int) -> list[dict]:
-    """Fetch all units in [fra, til] ansatte for one kommune, paginating.
-    Caller is responsible for keeping the range small enough to stay under
-    the API's deep-pagination ceiling (see fetch_kommune)."""
-    enheter: list[dict] = []
-    page = 0
-    while True:
-        params = {
-            "kommunenummer": kommunenummer,
-            "fraAntallAnsatte": fra,
-            "tilAntallAnsatte": til,
-            "size": PAGE_SIZE,
-            "page": page,
-        }
-        resp = requests.get(BASE_URL, params=params, headers={"Accept": "application/json"}, timeout=30)
         if resp.status_code == 429:
             print("    Rate-limited (429), venter 10s...")
             time.sleep(10)
             continue
+
         resp.raise_for_status()
+        return resp
+
+    raise RuntimeError(f"Ga opp etter {max_retries} forsok mot {url}")
+
+
+def fetch_all_kommunenumre() -> list[str]:
+    resp = get_with_retry(KOMMUNER_URL, {"size": 500})
+    kommuner = resp.json().get("_embedded", {}).get("kommuner", [])
+    return [k["nummer"] for k in kommuner if k.get("nummer")]
+
+
+def fetch_all_organisasjonsformer() -> list[str]:
+    resp = get_with_retry(ORG_FORMER_URL, {"size": 100})
+    former = resp.json().get("_embedded", {}).get("organisasjonsformer", [])
+    return [f["kode"] for f in former if f.get("kode")]
+
+
+def count_matches(params: dict) -> int:
+    resp = get_with_retry(BASE_URL, {**params, "size": 1, "page": 0})
+    return resp.json().get("page", {}).get("totalElements", 0)
+
+
+def fetch_range(params: dict, max_pages: int | None = None) -> list[dict]:
+    """Paginate through results for a fully-specified query, stopping early
+    at max_pages if given (used to avoid the API's ~10000 deep-pagination
+    ceiling for buckets we've given up trying to split further)."""
+    enheter: list[dict] = []
+    page = 0
+    while True:
+        resp = get_with_retry(BASE_URL, {**params, "size": PAGE_SIZE, "page": page})
         data = resp.json()
         page_enheter = data.get("_embedded", {}).get("enheter", [])
         enheter.extend(page_enheter)
 
         total_pages = data.get("page", {}).get("totalPages", 1)
         page += 1
-        if page >= total_pages or not page_enheter:
+        if page >= total_pages or not page_enheter or (max_pages and page >= max_pages):
             break
         time.sleep(0.2)
 
     return enheter
 
 
-def fetch_kommune(kommunenummer: str, fra: int = MIN_ANSATTE, til: int = MAX_ANSATTE) -> list[dict]:
-    """Fetch all matching units for a single kommune, splitting the ansatte
-    range further (binary-search style) whenever a bucket would exceed the
-    API's deep-pagination ceiling. Needed for a handful of very large
-    kommuner (e.g. Oslo has >10000 businesses with 1-20 ansatte alone)."""
-    total = count_matches(kommunenummer, fra, til)
-    if total <= SAFE_RESULT_LIMIT or fra >= til:
-        return fetch_range(kommunenummer, fra, til)
+def fetch_bucket(params: dict, org_former: list[str]) -> list[dict]:
+    total = count_matches(params)
+    if total <= SAFE_RESULT_LIMIT:
+        return fetch_range(params)
 
-    mid = (fra + til) // 2
-    return fetch_kommune(kommunenummer, fra, mid) + fetch_kommune(kommunenummer, mid + 1, til)
+    fra, til = params["fraAntallAnsatte"], params["tilAntallAnsatte"]
+    if fra <= 4 < til:
+        # split at the only valid boundary inside [1,20]: [1,4] and [5,20]
+        return (fetch_bucket({**params, "tilAntallAnsatte": 4}, org_former)
+                + fetch_bucket({**params, "fraAntallAnsatte": 5}, org_former))
+    if fra > 4 and fra != til:
+        mid = max(5, (fra + til) // 2)
+        if mid < til:
+            return (fetch_bucket({**params, "tilAntallAnsatte": mid}, org_former)
+                    + fetch_bucket({**params, "fraAntallAnsatte": mid + 1}, org_former))
+
+    # Ansatte-range is atomic (either exactly [1,4] or a single value >4) but
+    # still too big - split by organisasjonsform. If even that isn't enough
+    # (rare - e.g. Oslo's ~14500 AS-selskaper with 1-4 ansatte), accept a
+    # truncated first page for that specific bucket rather than drilling
+    # down further (naeringskode-level splitting was tried and is too slow
+    # to run nationally in reasonable time) and flag it clearly.
+    if "organisasjonsform" not in params:
+        results = []
+        for form in org_former:
+            results.extend(fetch_bucket({**params, "organisasjonsform": form}, org_former))
+        return results
+
+    print(f"    ADVARSEL: {total} treff for {params} - for stort til å dele opp mer, henter kun forste {SAFE_RESULT_LIMIT}.")
+    return fetch_range(params, max_pages=SAFE_RESULT_LIMIT // PAGE_SIZE)
 
 
-def fetch_all(kommunenumre: list[str]) -> list[dict]:
+def load_checkpoint() -> tuple[list[dict], set[str]]:
+    """Resume from brreg_checkpoint.jsonl if a previous run was interrupted -
+    one JSON line per completed kommune: {"kommunenummer": ..., "enheter": [...]}"""
+    if not os.path.exists(CHECKPOINT_PATH):
+        return [], set()
+
     enheter: list[dict] = []
-    for i, kommunenummer in enumerate(kommunenumre, 1):
-        kommune_enheter = fetch_kommune(kommunenummer)
-        enheter.extend(kommune_enheter)
-        print(f"  [{i}/{len(kommunenumre)}] kommune {kommunenummer}: +{len(kommune_enheter)} (totalt sett {len(enheter)})")
+    done: set[str] = set()
+    with open(CHECKPOINT_PATH, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            enheter.extend(record["enheter"])
+            done.add(record["kommunenummer"])
+    return enheter, done
+
+
+def fetch_all(kommunenumre: list[str], org_former: list[str]) -> list[dict]:
+    enheter, done = load_checkpoint()
+    if done:
+        print(f"  Gjenopptar: {len(done)} kommuner allerede hentet fra tidligere kjoring ({len(enheter)} enheter).")
+
+    with open(CHECKPOINT_PATH, "a", encoding="utf-8") as checkpoint_file:
+        for i, kommunenummer in enumerate(kommunenumre, 1):
+            if kommunenummer in done:
+                continue
+            base_params = {"kommunenummer": kommunenummer, "fraAntallAnsatte": MIN_ANSATTE, "tilAntallAnsatte": MAX_ANSATTE}
+            kommune_enheter = fetch_bucket(base_params, org_former)
+            enheter.extend(kommune_enheter)
+            checkpoint_file.write(json.dumps({"kommunenummer": kommunenummer, "enheter": kommune_enheter}, ensure_ascii=False) + "\n")
+            checkpoint_file.flush()
+            print(f"  [{i}/{len(kommunenumre)}] kommune {kommunenummer}: +{len(kommune_enheter)} (totalt sett {len(enheter)})")
     return enheter
 
 
@@ -112,12 +175,17 @@ def main() -> None:
     kommunenumre = fetch_all_kommunenumre()
     print(f"Fant {len(kommunenumre)} kommuner.")
 
+    org_former = fetch_all_organisasjonsformer()
+
     print(f"Henter smabedrifter ({MIN_ANSATTE}-{MAX_ANSATTE} ansatte) nasjonalt ...")
-    all_enheter = fetch_all(kommunenumre)
+    all_enheter = fetch_all(kommunenumre, org_former)
     print(f"\nTotalt {len(all_enheter)} enheter hentet.")
 
     with open("brreg_raw.json", "w", encoding="utf-8") as f:
         json.dump(all_enheter, f, ensure_ascii=False, indent=2)
+
+    if os.path.exists(CHECKPOINT_PATH):
+        os.remove(CHECKPOINT_PATH)  # full run succeeded - don't resume stale data next time
 
     with_email = [e for e in all_enheter if e.get("epostadresse")]
     print(f"Herav {len(with_email)} med epostadresse utfylt ({100 * len(with_email) / max(len(all_enheter), 1):.0f}%).")
