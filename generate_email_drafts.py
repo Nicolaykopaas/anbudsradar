@@ -24,6 +24,24 @@ MAX_BUSINESSES_PER_LEAD = 5
 CPV_GROUP_TO_NACE = {
     "3980": ["20", "46"],   # renholdsprodukter -> kjemisk produksjon/engros, ikke mobler
     "9240": ["63"],         # pressetjenester -> informasjonstjenester, ikke kultur/fritid
+    # Division 79 (forretningstjenester) is a grab-bag of very different
+    # real activities (vikarbyra, vakthold, konsulent, evaluering) that all
+    # landed in the same broad NACE list and got mismatched by random pick -
+    # e.g. "vikartjenester innen helse" hit a law firm, "sikkerhetsovervaking"
+    # hit an accounting firm. Narrow each known sub-activity down.
+    "7962": ["78"],         # vikartjenester -> utleie av arbeidskraft
+    "7963": ["78"],         # ovrig personellformidling
+    "7971": ["80"],         # sikkerhetsovervaking -> vakttjeneste
+    "7940": ["70"],         # evaluering/utredning -> bedriftsradgivning
+    "7941": ["70", "82"],   # konsulent innen anskaffelser -> radgivning/adm.stotte
+    # Division 90 (miljotjenester) same problem - renhold, avfall og
+    # snorydding er helt ulike bransjer som alle falt i samme brede liste.
+    "9091": ["81"],         # renholdstjenester -> rengjoringsvirksomhet
+    "9062": ["81"],         # snorydding/broyting -> rengjorings-/eiendomsdrift
+    "9051": ["38"],         # avfallsbehandling
+    "9050": ["38"],         # avhending av utstyr -> avfall/gjenvinning
+    "9040": ["37"],         # VA-tjenester -> avlopsrensing
+    "3314": ["46.46", "32"],  # dentale/medisinske forbruksvarer -> apotek/medisinsk engros
 }
 
 # Rough CPV (2-digit division) -> NACE (2-digit division) crosswalk.
@@ -47,11 +65,11 @@ CPV_TO_NACE = {
     "30": ["26", "46", "62"],              # kontormaskiner/IT-utstyr
     "31": ["27"],                          # elektrisk utstyr
     "32": ["26", "61"],                    # radio/TV/kommunikasjon
-    "33": ["32", "46"],                    # medisinsk utstyr - produsent/grossist, ikke klinikk
-    "34": ["29", "30", "33", "45"],        # kjoretoy - produsent/forhandler/verksted
+    "33": ["32", "46.4"],                  # medisinsk utstyr - produsent/grossist (46.4=engros forbruksvarer, ikke all engros)
+    "34": ["45", "29", "30"],              # kjoretoy - forhandler/verksted, produsent (33 fjernet: for bredt, traff tilfeldig skips-/flyreparasjon)
     "35": ["25", "26", "27", "28", "80"],  # sikkerhet/beredskapsutstyr + vakttjeneste
     "37": ["32"],                          # musikk/sport/spill
-    "38": ["26", "32"],                    # lab/maleinstrumenter
+    "38": ["26", "32.5"],                  # lab/maleinstrumenter (32.5=medisinske/tanntekniske instrumenter, ikke smykker/leker)
     "39": ["31"],                          # mobler/inventar (se CPV_GROUP_TO_NACE for 3980)
     "41": ["36"],                          # vannforsyning
     "42": ["28"],                          # industrimaskiner
