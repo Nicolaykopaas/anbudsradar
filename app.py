@@ -34,18 +34,56 @@ def last_data() -> pd.DataFrame:
     return last_scores(mtime)
 
 
-with st.sidebar:
-    st.title("📡 AnbudsRadar")
-    st.caption("Ingenting sendes herfra — kun oversikt og utkast.")
-    st.divider()
-    min_match = st.slider("Minimum matchscore", 0, 100, 0)
-    min_realism = st.slider("Minimum realismescore", 0, 100, 0)
-    bransje_filter = st.text_input("Filtrer på bransje")
-    kommune_filter = st.text_input("Filtrer på kommune")
+st.title("📡 AnbudsRadar")
+st.caption("Ingenting sendes herfra — kun oversikt og utkast.")
 
 df = last_data()  # allerede filtrert bort kontaktede bedrifter i compute_scores.py
 
-filtered = df[(df["match_score"] >= min_match) & (df["realism_score"] >= min_realism)]
+STORRELSE_GRENSER = {
+    "Alle størrelser": (0, float("inf")),
+    "Små (under 5 mill kr)": (0, 5_000_000),
+    "Middels (5-50 mill kr)": (5_000_000, 50_000_000),
+    "Store (over 50 mill kr)": (50_000_000, float("inf")),
+}
+
+with st.expander("🔍 Filtre — hva som teller for match- og realismescoren", expanded=True):
+    r1c1, r1c2, r1c3 = st.columns(3)
+    with r1c1:
+        geo_valg = st.selectbox("Geografisk treff", ["Alle", "Minst samme fylke", "Kun samme kommune"])
+    with r1c2:
+        kun_presis_bransje = st.checkbox("Kun presis bransjematch (ikke bred fallback)")
+    with r1c3:
+        kun_etablert = st.checkbox("Kun etablerte bedrifter (2+ år)")
+
+    r2c1, r2c2, r2c3 = st.columns(3)
+    with r2c1:
+        storrelse_valg = st.selectbox("Oppdragsstørrelse", list(STORRELSE_GRENSER.keys()))
+    with r2c2:
+        vanskelighet_valg = st.selectbox("Vanskelighetsgrad", ["Alle", "Lett", "Middels", "Vanskelig"])
+    with r2c3:
+        maks_avstand = st.slider("Maks avstand (km)", 0, 800, 800, help="Ukjent avstand vises alltid")
+
+    bransje_filter = st.text_input("Fritekst: bransje")
+    kommune_filter = st.text_input("Fritekst: kommune")
+
+filtered = df.copy()
+if geo_valg == "Kun samme kommune":
+    filtered = filtered[filtered["match_geo_label"] == "samme kommune"]
+elif geo_valg == "Minst samme fylke":
+    filtered = filtered[filtered["match_geo_label"].isin(["samme kommune", "samme fylke"])]
+if kun_presis_bransje:
+    filtered = filtered[filtered["match_bransje"] >= 1.0]
+if kun_etablert:
+    filtered = filtered[filtered["realism_age"] >= 1.0]
+
+storrelse_min, storrelse_maks = STORRELSE_GRENSER[storrelse_valg]
+filtered = filtered[(filtered["lead_verdi"] >= storrelse_min) & (filtered["lead_verdi"] <= storrelse_maks)]
+
+vanskelighet_map = {"Lett": "Realistisk", "Middels": "Usikker", "Vanskelig": "Urealistisk"}
+if vanskelighet_valg != "Alle":
+    filtered = filtered[filtered["realism_tier"] == vanskelighet_map[vanskelighet_valg]]
+
+filtered = filtered[filtered["realism_distance_km"].isna() | (filtered["realism_distance_km"] <= maks_avstand)]
 if bransje_filter:
     filtered = filtered[filtered["bransje"].str.contains(bransje_filter, case=False, na=False)]
 if kommune_filter:
