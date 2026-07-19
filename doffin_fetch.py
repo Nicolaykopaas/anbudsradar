@@ -3,8 +3,8 @@ Doffin lead scraper: fetch active notices nationwide (all industries) from
 the Doffin Public API, with full lead detail (deadline, contact, value).
 
 Pipeline:
-    1. /public/v2/search  -> ALL currently active COMPETITION notices,
-       all industries, all of Norway (no publish-date window).
+    1. /public/v2/search  -> active COMPETITION notices published in the
+       last DAYS_BACK days, all industries, all of Norway.
     2. /public/v2/download/{id} -> full eForms UBL XML per notice, parsed for:
        buyer contact (name/phone/email), tender deadline, estimated value,
        primary+additional CPV, buyer org.nr/address.
@@ -32,6 +32,7 @@ BRREG_ENHET_URL = "https://data.brreg.no/enhetsregisteret/api/enheter/{orgnr}"
 API_KEY = os.environ.get("DOFFIN_API_KEY")
 
 PAGE_SIZE = 100
+DAYS_BACK = 7
 
 NS = {
     "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
@@ -146,14 +147,14 @@ def search_window(issue_from: date, issue_to: date) -> list[dict]:
 
 
 def search_all() -> list[dict]:
-    """Broad search across ALL currently-active notices (no fixed 7-day
-    window - status=ACTIVE already means still open for bids, regardless
-    of how long ago it was published). cpvCode is NOT passed server-side -
-    filtering happens client-side. Splits by publish-date range as needed
-    to stay under Doffin's deep-pagination ceiling."""
-    # 2 years back is generous - Norwegian tenders are rarely open longer
-    # than that, and status=ACTIVE already excludes anything expired.
-    issue_from = date.today() - timedelta(days=730)
+    """Broad search across notices published in the last DAYS_BACK days
+    (weekly "what's new" model - fast to run, and a business that didn't
+    respond last week won't be re-suggested for the exact same old notice
+    every run). cpvCode is NOT passed server-side - filtering happens
+    client-side. Splits by publish-date range if a window is ever large
+    enough to hit Doffin's deep-pagination ceiling (not expected at 7
+    days, but the safety net costs nothing)."""
+    issue_from = date.today() - timedelta(days=DAYS_BACK)
     hits = search_window(issue_from, date.today())
 
     seen_ids = set()
@@ -268,7 +269,7 @@ def format_deadline(dato: str, tid: str) -> str:
 
 def write_readable_summary(rows: list[dict], path: str) -> None:
     lines = [
-        f"# Aktive offentlige jobber i Norge ({len(rows)} stk)",
+        f"# Offentlige jobber i Norge denne uka ({len(rows)} stk)",
         "",
         "Dette er offentlige jobber (anbud) som er lyst ut i Norge, uansett bransje."
         " Bedrifter kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
@@ -307,7 +308,7 @@ def main() -> None:
     if not API_KEY:
         die("Sett miljøvariabelen DOFFIN_API_KEY med subscription-nøkkelen din først.")
 
-    print("Steg 1: soker bredt etter ALLE aktive kunngjoringer (uansett publiseringsdato) ...")
+    print(f"Steg 1: soker bredt etter aktive kunngjoringer publisert siste {DAYS_BACK} dager ...")
     try:
         all_hits = search_all()
     except RuntimeError as e:
@@ -338,7 +339,7 @@ def main() -> None:
     print(f"Nasjonal oversikt (alle bransjer) lagret til doffin_notices_alle.csv ({len(all_rows)} rader).")
 
     if not all_hits:
-        print("Ingen aktive kunngjoringer funnet - ingen detaljer a hente.")
+        print("Ingen treff denne uka - ingen detaljer a hente.")
         return
 
     print(f"\nSteg 2: henter og parser full detalj for {len(all_hits)} treff ...")
