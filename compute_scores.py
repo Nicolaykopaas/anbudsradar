@@ -51,10 +51,21 @@ def main() -> None:
         kontaktet = set(pd.read_csv("kontaktet.csv")["orgnr"])
     except FileNotFoundError:
         kontaktet = set()
+    # Abonnenter (betalende/interesserte) skal ALLTID kunne foreslas igjen -
+    # kontakt-en-gang-regelen gjelder kun kald utsendelse.
+    try:
+        abonnenter = set(pd.read_csv("abonnenter.csv")["orgnr"])
+    except FileNotFoundError:
+        abonnenter = set()
+    kontaktet -= abonnenter
 
     # Bedrifter som allerede er kontaktet skal aldri foreslas igjen - filtrer
     # dem bort for scoring i stedet for a bare skjule dem i frontend etterpa.
     biz_df = biz_df[~biz_df["orgnr"].isin(kontaktet)]
+
+    # Juridisk: mfl. § 15 - enkeltpersonforetak regnes som fysisk person, og
+    # kald e-postmarkedsforing uten samtykke er ikke lov mot fysiske personer.
+    biz_df = biz_df[biz_df["organisasjonsform"] != "ENK"]
 
     rows = []
     for _, lead in leads_df.iterrows():
@@ -64,6 +75,9 @@ def main() -> None:
 
         candidates = biz_df[biz_df["naeringskode"].apply(lambda k: matches_nace(k, divisions))]
         dager_igjen = dager_til_frist(lead.get("tilbudsfrist_dato"))
+        # Hardt filter: utlopt eller <7 dager til frist er ubrukelig som teaser.
+        if dager_igjen is not None and dager_igjen < 7:
+            continue
 
         lead_rows = []
         for _, biz in candidates.iterrows():

@@ -51,6 +51,8 @@ Hele kunngjøringen: {lead['lenke']}
 Jeg sender ut denne typen relevante anbud fortløpende til bedrifter i bransjen.
 Ønsker dere å få flere slike tips fremover, bare svar på denne e-posten.
 
+Kontaktinfo er hentet fra Brønnøysundregisteret.
+
 Ikke interessert i flere henvendelser som dette? Bare si fra, så fjerner jeg dere fra listen.
 
 Mvh
@@ -75,27 +77,26 @@ def main() -> None:
     # compute_scores.py already excludes kontaktet.csv-bedrifter and sorts
     # candidates loosely - re-sort defensively here so "best first" is
     # guaranteed regardless of upstream ordering.
+    scores_df = scores_df[scores_df["realism_tier"] != "Urealistisk"]
+    # Hver bedrift skal fa sitt BESTE anbud, ikke det forste loopen traff:
+    # sorter globalt pa samlet score og behold ett (beste) par per orgnr.
+    scores_df = scores_df.assign(_s=scores_df["match_score"] + scores_df["realism_score"]) \
+        .sort_values("_s", ascending=False).drop_duplicates(subset="orgnr")
     scores_df = scores_df.sort_values(["doffin_id", "match_score", "realism_score"], ascending=[True, False, False])
 
     output_lines = ["# Utkast til lead-eposter (IKKE SENDT - kun utkast for gjennomlesning)\n"]
     n_leads_with_match = 0
     kandidater_denne_runden = []
-    # Each business should get exactly ONE lead (the "one lead as a teaser"
-    # model) - without this, a business matching several leads would get a
-    # separate email per lead (seen live: some businesses matched 7 leads).
-    used_orgnr: set = set()
 
     for doffin_id, gruppe in scores_df.groupby("doffin_id", sort=False):
         if doffin_id not in leads_df.index:
             continue
         row = leads_df.loc[doffin_id]
 
-        kandidater = gruppe[~gruppe["orgnr"].isin(used_orgnr)]
-        chosen = kandidater.head(MAX_BUSINESSES_PER_LEAD)
+        chosen = gruppe.head(MAX_BUSINESSES_PER_LEAD)
         if len(chosen) == 0:
             continue
 
-        used_orgnr.update(chosen["orgnr"])
         n_leads_with_match += 1
         lead = {
             "tittel": row.get("tittel", "(uten tittel)"),
@@ -118,10 +119,13 @@ def main() -> None:
                 f" | match {biz['match_score']:.0f} ({biz['match_tier']}), realisme {biz['realism_score']:.0f} ({biz['realism_tier']})"
             )
         output_lines.append("")
-        output_lines.append("**Utkast (samme tekst til alle, bytt ut navnet i emnefeltet manuelt):**")
-        output_lines.append("```")
-        output_lines.append(draft_email(str(chosen.iloc[0]["navn"]), lead))
-        output_lines.append("```")
+        # Ett ferdig utkast PER bedrift - manuelt navnebytte i emnefeltet
+        # var en garantert feilkilde (feil bedriftsnavn i emnet).
+        for _, biz in chosen.iterrows():
+            output_lines.append(f"**Til {biz['navn']} ({biz['epost']}):**")
+            output_lines.append("```")
+            output_lines.append(draft_email(str(biz["navn"]), lead))
+            output_lines.append("```")
         output_lines.append("\n---\n")
 
         for _, biz in chosen.iterrows():

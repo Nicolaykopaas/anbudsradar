@@ -11,6 +11,7 @@ Usage:
     python marker_sendt.py
 """
 
+import sys
 from datetime import date
 
 import pandas as pd
@@ -42,10 +43,19 @@ def append_to_kontaktet(rader: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     try:
-        kandidater = pd.read_csv(KANDIDATER_PATH)
+        kandidater = pd.read_csv(KANDIDATER_PATH, dtype={"orgnr": str})
     except FileNotFoundError:
         print(f"Fant ikke {KANDIDATER_PATH} - kjor generate_email_drafts.py forst.")
         return
+
+    # Delvis utsending: 'python marker_sendt.py 912345678 998765432' markerer
+    # kun de orgnr-ene - uten argumenter markeres hele runden (som for).
+    valgte = set(sys.argv[1:])
+    if valgte:
+        kandidater = kandidater[kandidater["orgnr"].isin(valgte)]
+        ukjent = valgte - set(kandidater["orgnr"])
+        if ukjent:
+            print(f"ADVARSEL: fant ikke i runden: {', '.join(sorted(ukjent))}")
 
     if len(kandidater) == 0:
         print("Ingen kandidater a markere.")
