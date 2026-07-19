@@ -4,7 +4,7 @@ Finner offentlige anbud i Norge og matcher dem mot bedrifter som faktisk kan ta 
 
 Kjører på to gratis, offentlige API-er (Doffin og Brønnøysundregisteret). Ingen skraping, ingen betalte tjenester, ingen skyløsning.
 
-<!-- Skjermbilde av dashbordet her -->
+![Dashbordet](screenshots/dashbord.png)
 
 ## Hva den gjør
 
@@ -39,8 +39,9 @@ Hvert anbud-bedrift-par får to tall, 0–100:
 
 Begge regnes ut i Python, én gang, lagres til fil. Dashbordet gjør ingen matte selv, bare viser resultatet.
 
-## Ting jeg måtte finne ut av underveis
+![Anbefalte bedrifter for et anbud](screenshots/anbefalinger.png)
 
+## Ting jeg måtte finne ut av underveis
 - Det finnes ingen offisiell kobling mellom EU sine anbudskoder (CPV) og norske næringskoder (NACE). `cpv_nace.py` er en håndlaget tabell, justert mot ekte data helt til feilmatcher (en gullsmed som fikk tilbud om et sykehjems-anbud) sluttet å dukke opp.
 - Norge følger ikke alltid EU-standarden for NACE. Bilbransjen er det tydeligste eksempelet — EU sier kode 45, men Brreg bruker 46/47 for handel og 95 for verksted. Fant det ved å teste live og se at kode 45 ga null treff i hele Norge.
 - Både Brreg og Doffin har en grense på hvor dypt man kan søke (rundt 10 000 og 1000 treff). Løst ved å dele opp søket automatisk — på antall ansatte/selskapsform for Brreg, på publiseringsdato for Doffin — helt til hver bit er liten nok.
