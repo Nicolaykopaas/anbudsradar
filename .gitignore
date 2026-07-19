@@ -25,3 +25,4 @@ kontaktet.csv
 # Generated data dumps - regenerate with: python compute_scores.py
 lead_bedrift_scores.csv
 streamlit_log*.txt
+doffin_full_log.txt

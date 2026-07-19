@@ -3,8 +3,8 @@ Doffin lead scraper: fetch active notices nationwide (all industries) from
 the Doffin Public API, with full lead detail (deadline, contact, value).
 
 Pipeline:
-    1. /public/v2/search  -> broad list of active COMPETITION notices in the
-       date window, all industries, all of Norway.
+    1. /public/v2/search  -> ALL currently active COMPETITION notices,
+       all industries, all of Norway (no publish-date window).
     2. /public/v2/download/{id} -> full eForms UBL XML per notice, parsed for:
        buyer contact (name/phone/email), tender deadline, estimated value,
        primary+additional CPV, buyer org.nr/address.
@@ -31,7 +31,6 @@ DOWNLOAD_URL = "https://api.doffin.no/public/v2/download/{doffin_id}"
 BRREG_ENHET_URL = "https://data.brreg.no/enhetsregisteret/api/enheter/{orgnr}"
 API_KEY = os.environ.get("DOFFIN_API_KEY")
 
-DAYS_BACK = 7
 PAGE_SIZE = 100
 
 NS = {
@@ -77,12 +76,14 @@ def api_get_xml(url: str) -> str:
         return resp.text
 
 
-def search_all(issue_date_from: str, issue_date_to: str) -> list[dict]:
-    """Broad search across all notice types/CPVs in the date window.
-    cpvCode is NOT passed server-side - filtering happens client-side."""
+SEARCH_HIT_CEILING = 900  # Doffin rejects page*numHitsPerPage past 1000 - stay under it
+
+
+def search_page_range(issue_from: str | None, issue_to: str | None) -> list[dict]:
+    """Paginate through one date window. Caller must keep the window's
+    total under SEARCH_HIT_CEILING."""
     hits: list[dict] = []
     page = 1
-
     while True:
         params = {
             "numHitsPerPage": PAGE_SIZE,
@@ -90,9 +91,12 @@ def search_all(issue_date_from: str, issue_date_to: str) -> list[dict]:
             "sortBy": "PUBLICATION_DATE_DESC",
             "status": "ACTIVE",
             "type": "COMPETITION",
-            "issueDateFrom": issue_date_from,
-            "issueDateTo": issue_date_to,
         }
+        if issue_from:
+            params["issueDateFrom"] = issue_from
+        if issue_to:
+            params["issueDateTo"] = issue_to
+
         payload = api_get_json(SEARCH_URL, params)
         page_hits = payload.get("hits") or []
         if isinstance(page_hits, dict):
@@ -108,6 +112,45 @@ def search_all(issue_date_from: str, issue_date_to: str) -> list[dict]:
         time.sleep(1)
 
     return hits
+
+
+def search_window(issue_from: date, issue_to: date) -> list[dict]:
+    """Recursively split the publish-date range in half whenever a window
+    would exceed Doffin's ~1000-hit deep-pagination ceiling (mirrors the
+    same adaptive-splitting pattern used for Brreg's ansatte ranges)."""
+    probe = api_get_json(SEARCH_URL, {
+        "numHitsPerPage": 1, "page": 1, "status": "ACTIVE", "type": "COMPETITION",
+        "issueDateFrom": issue_from.isoformat(), "issueDateTo": issue_to.isoformat(),
+    })
+    total = probe.get("numHitsTotal", 0)
+
+    if total <= SEARCH_HIT_CEILING or issue_from >= issue_to:
+        return search_page_range(issue_from.isoformat(), issue_to.isoformat())
+
+    midt = issue_from + (issue_to - issue_from) / 2
+    return (search_window(issue_from, midt) + search_window(midt + timedelta(days=1), issue_to))
+
+
+def search_all() -> list[dict]:
+    """Broad search across ALL currently-active notices (no fixed 7-day
+    window - status=ACTIVE already means still open for bids, regardless
+    of how long ago it was published). cpvCode is NOT passed server-side -
+    filtering happens client-side. Splits by publish-date range as needed
+    to stay under Doffin's deep-pagination ceiling."""
+    # 2 years back is generous - Norwegian tenders are rarely open longer
+    # than that, and status=ACTIVE already excludes anything expired.
+    issue_from = date.today() - timedelta(days=730)
+    hits = search_window(issue_from, date.today())
+
+    seen_ids = set()
+    deduped = []
+    for h in hits:
+        hid = h.get("id")
+        if hid in seen_ids:
+            continue
+        seen_ids.add(hid)
+        deduped.append(h)
+    return deduped
 
 
 def parse_notice_xml(xml_text: str) -> dict:
@@ -211,7 +254,7 @@ def format_deadline(dato: str, tid: str) -> str:
 
 def write_readable_summary(rows: list[dict], path: str) -> None:
     lines = [
-        f"# Offentlige jobber i Norge denne uka ({len(rows)} stk)",
+        f"# Aktive offentlige jobber i Norge ({len(rows)} stk)",
         "",
         "Dette er offentlige jobber (anbud) som er lyst ut i Norge, uansett bransje."
         " Bedrifter kan sende inn tilbud for å få jobben. Under hver jobb ligger navnet"
@@ -250,16 +293,12 @@ def main() -> None:
     if not API_KEY:
         die("Sett miljøvariabelen DOFFIN_API_KEY med subscription-nøkkelen din først.")
 
-    today = date.today()
-    issue_from = (today - timedelta(days=DAYS_BACK)).isoformat()
-    issue_to = today.isoformat()
-
-    print(f"Steg 1: soker bredt {issue_from} -> {issue_to} ...")
+    print("Steg 1: soker bredt etter ALLE aktive kunngjoringer (uansett publiseringsdato) ...")
     try:
-        all_hits = search_all(issue_from, issue_to)
+        all_hits = search_all()
     except RuntimeError as e:
         die(str(e))  # sok-steget er reelt fatalt - uten det har vi ingenting a jobbe med
-    print(f"Totalt {len(all_hits)} aktive COMPETITION-kunngjoringer i vinduet.")
+    print(f"Totalt {len(all_hits)} aktive COMPETITION-kunngjoringer.")
 
     with open("doffin_search_raw.json", "w", encoding="utf-8") as f:
         json.dump(all_hits, f, ensure_ascii=False, indent=2)
@@ -285,7 +324,7 @@ def main() -> None:
     print(f"Nasjonal oversikt (alle bransjer) lagret til doffin_notices_alle.csv ({len(all_rows)} rader).")
 
     if not all_hits:
-        print("Ingen treff denne uka - ingen detaljer a hente.")
+        print("Ingen aktive kunngjoringer funnet - ingen detaljer a hente.")
         return
 
     print(f"\nSteg 2: henter og parser full detalj for {len(all_hits)} treff ...")
