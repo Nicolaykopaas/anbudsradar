@@ -28,6 +28,15 @@ CPV_GROUP_TO_NACE = {
     "9050": ["38"],         # avhending av utstyr -> avfall/gjenvinning
     "9040": ["37"],         # VA-tjenester -> avlopsrensing
     "3314": ["46.46", "32.5"],  # dentale/medisinske forbruksvarer -> apotek/medisinsk engros (fjernet bred "32" - traff bl.a. smykkeproduksjon)
+    # Veikjoretoy (biler/lastebiler/busser/tilhengere) -> bilforhandler/
+    # -verksted. NB: Norge bruker IKKE EU-standard NACE 45 for dette - i
+    # norsk SN2007 ligger bilhandel under 45/46.71 (engros) og 47.81
+    # (detaljhandel), og bilverksted under 95.31 (ikke 45x som ellers i EU).
+    # Bekreftet live mot Brreg 2026-07-19 (naeringskode=45 ga 0 treff).
+    "3410": ["46.71", "47.81", "95.31"], "3411": ["46.71", "47.81", "95.31"],
+    "3412": ["46.71", "47.81", "95.31"], "3413": ["46.71", "47.81", "95.31"],
+    "3414": ["46.71", "47.81", "95.31"], "3422": ["46.71", "47.81", "95.31"],
+    "3421": ["46.71", "47.81", "95.31"],
 }
 
 # CPV (2-sifret divisjon) -> NACE (divisjon eller mer spesifikk kode).
@@ -43,7 +52,7 @@ CPV_TO_NACE = {
     "31": ["27"],
     "32": ["26", "61"],
     "33": ["32.5", "46.4"],  # medisinsk utstyr - kun medisinske/tanntekniske instrumenter (32.5), ikke all "annen industriproduksjon" (32)
-    "34": ["45", "29", "30"],
+    "34": ["46.71", "47.81", "95.31", "29", "30"],  # kjoretoy (default for koder uten spesifikk override, f.eks. bater)
     "35": ["25", "26", "27", "28", "80"],
     "37": ["32"],
     "38": ["26", "32.5"],
@@ -54,7 +63,7 @@ CPV_TO_NACE = {
     "44": ["23", "24", "25", "43"],
     "45": ["41", "42", "43"],
     "48": ["62"],
-    "50": ["43", "33", "45", "95"],
+    "50": ["43", "33", "95"],  # reparasjon/vedlikehold (rorlegger/elektriker=43, kjoretoy=95.31)
     "51": ["43"],
     "55": ["55", "56"],
     "60": ["49", "52", "53"],

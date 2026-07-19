@@ -1,41 +1,45 @@
-# Doffin Leads
+# 📡 AnbudsRadar
 
-A lead-generation pipeline for Norwegian public procurement. It finds active public tenders (via [Doffin](https://doffin.no), Norway's national procurement portal), matches each one against relevant small/medium businesses (via [Brønnøysundregistrene](https://www.brreg.no), Norway's official business registry), and scores every match on **relevance** and **realism** — so outreach is targeted, not spam.
+Et verktøy som finner offentlige anbud i Norge og matcher dem mot relevante små og mellomstore bedrifter — automatisk, presist og helt gratis.
 
-Built entirely on free, public government APIs. No paid services, no hosting costs.
+Tanken: offentlige anskaffelser publiseres åpent på [Doffin](https://doffin.no), men de fleste små bedrifter har ikke tid til å følge med selv. AnbudsRadar finner de riktige anbudene for hver bedrift, regner ut hvor godt de faktisk passer, og gjør det enkelt å ta kontakt.
 
-## What it does
+<!-- 📸 Sett inn et skjermbilde av dashbordet her, f.eks:
+![AnbudsRadar dashbord](skjermbilde.png)
+-->
 
-1. **Fetches tenders** — every active public procurement notice in Norway, with deadline, buyer, estimated value, and industry classification (CPV codes).
-2. **Fetches businesses** — small/medium companies from the national business registry, filtered by employee count and industry (NACE codes).
-3. **Matches and scores** each tender against candidate businesses:
-   - **Match score** — how precisely the industry and location line up.
-   - **Realism score** — whether a business this size, this far away, with this much runway before the deadline, could plausibly deliver the contract.
-4. **Dashboard** — a local web app to browse matches, review draft outreach emails, and track who's already been contacted.
+## Hva det gjør
 
-Nothing is sent automatically. Every email is a draft for manual review.
+1. **Henter anbud** — alle aktive offentlige konkurranser i Norge, med frist, oppdragsgiver, verdi og bransjekode.
+2. **Henter bedrifter** — små/mellomstore norske bedrifter fra Brønnøysundregisteret, filtrert på ansatte og bransje.
+3. **Regner ut score** for hvert anbud-bedrift-par:
+   - **Matchscore** — hvor presist bransje og geografi treffer.
+   - **Realismescore** — om bedriften realistisk kan ta kontrakten (størrelse, avstand, tid til frist, alder på selskapet).
+4. **Dashbord** — bla gjennom anbud, se anbefalte bedrifter side om side, og hold styr på hvem som er kontaktet.
 
-## Stack
+Ingenting sendes automatisk. Alle e-poster er utkast du selv leser gjennom og sender.
 
-Python, pandas, [Streamlit](https://streamlit.io) — no separate backend, no database, no JS build step. Runs entirely on your machine.
+## Teknologi
 
-## Running it
+Python, pandas og [Streamlit](https://streamlit.io) — ingen database, ingen server, ingen bygg-steg. Kjører lokalt på din egen maskin.
+
+## Kom i gang
 
 ```bash
 pip install -r requirements.txt
 
-python doffin_fetch.py          # fetch tenders (needs a free Doffin API key)
-python brreg_fetch.py           # fetch businesses (no key needed)
-python compute_scores.py        # score every match
-python generate_email_drafts.py # write draft outreach emails
+python doffin_fetch.py          # hent anbud (krever gratis Doffin-API-nøkkel)
+python brreg_fetch.py           # hent bedrifter (ingen nøkkel nødvendig)
+python compute_scores.py        # regn ut score for hvert anbud-bedrift-par
+python generate_email_drafts.py # skriv e-post-utkast
 
-streamlit run app.py            # open the dashboard
+streamlit run app.py            # åpne dashbordet i nettleseren
 ```
 
-See inline docs in each script for setup details (API key registration, employee-count ranges, etc.).
+Se kommentarene øverst i hvert script for detaljer (API-nøkkel-registrering, ansatte-intervall osv.).
 
-## Design notes
+## Noen designvalg
 
-- **Two free registries, one crosswalk.** There's no official mapping between EU procurement codes (CPV) and Norwegian industry codes (NACE) — `cpv_nace.py` is a hand-tuned crosswalk built and refined against real tender data.
-- **Distance is computed, not guessed.** Business-to-buyer distance uses a free, offline postal-code coordinate dataset — no geocoding API calls at runtime.
-- **Contacted once, never again.** A permanent log excludes any business that's already been reached out to, regardless of outcome — the matching pipeline can't accidentally re-contact anyone.
+- **To gratis registre, én bro mellom dem.** Det finnes ingen offisiell kobling mellom EU:s anbudskoder (CPV) og norske næringskoder (NACE) — `cpv_nace.py` er en håndbygget bro, justert mot ekte anbudsdata. Underveis oppdaget jeg at Norge til og med bruker en annen inndeling enn resten av EU for enkelte bransjer (bilbransjen ligger f.eks. under helt andre koder enn EU-standarden skulle tilsi).
+- **Avstand er beregnet, ikke gjettet.** Bruker et gratis, offline norsk postnummer-datasett for koordinater — ingen kall til betalte geokodings-tjenester.
+- **Kontaktet én gang, aldri igjen.** En permanent logg sikrer at ingen bedrift blir kontaktet flere ganger, uansett om de svarte eller ikke.
