@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from marker_sendt import append_to_kontaktet
+from generate_email_drafts import draft_email, format_verdi, format_frist
 
 st.set_page_config(page_title="AnbudsRadar", layout="wide")
 
@@ -32,6 +33,19 @@ def last_data() -> pd.DataFrame:
         st.error("Fant ikke lead_bedrift_scores.csv. Kjor: python compute_scores.py forst.")
         st.stop()
     return last_scores(mtime)
+
+
+@st.cache_data
+def last_lead_detaljer(mtime: float) -> pd.DataFrame:
+    return pd.read_csv("doffin_notices_detaljert.csv").set_index("doffin_id")
+
+
+def lead_detaljer() -> pd.DataFrame:
+    try:
+        mtime = os.path.getmtime("doffin_notices_detaljert.csv")
+    except FileNotFoundError:
+        return pd.DataFrame()
+    return last_lead_detaljer(mtime)
 
 
 st.title("AnbudsRadar")
@@ -137,10 +151,11 @@ with tab_oversikt:
                         f"{lead['lead_oppdragsgiver']} · {lead['lead_verdi']:,.0f} kr · frist {lead['lead_frist']}  \n"
                         f"[Se hele kunngjøringen ↗]({lead['lead_lenke']})".replace(",", " "))
 
-            kandidater = lead_rows.head(10)
-            st.dataframe(
+            kandidater = lead_rows.head(10).reset_index(drop=True)
+            st.caption("Klikk en bedrift for å se e-post-utkastet.")
+            valgt_biz = st.dataframe(
                 kandidater,
-                height=340,
+                height=280,
                 use_container_width=True,
                 hide_index=True,
                 column_order=["navn", "bransje", "kommune", "match_tier", "realism_tier", "epost", "telefon"],
@@ -153,17 +168,36 @@ with tab_oversikt:
                     "epost": "E-post",
                     "telefon": "Telefon",
                 },
+                on_select="rerun",
+                selection_mode="single-row",
+                key=f"biz_tabell_{valgt_id}",
             )
+            biz_rader = valgt_biz.selection.rows if valgt_biz and valgt_biz.selection else []
+            rad = kandidater.iloc[biz_rader[0]] if biz_rader else kandidater.iloc[0]
 
-            valgt_navn = st.selectbox("Marker en bedrift som sendt", kandidater["navn"], index=None,
-                                       placeholder="Velg bedrift ...")
-            if valgt_navn and st.button("Marker som sendt"):
-                rad = kandidater[kandidater["navn"] == valgt_navn].iloc[0]
+            detaljer = lead_detaljer()
+            ekstra = detaljer.loc[valgt_id] if valgt_id in detaljer.index else {}
+            lead_dict = {
+                "tittel": lead["lead_tittel"],
+                "oppdragsgiver": lead["lead_oppdragsgiver"],
+                "frist": format_frist(lead["lead_frist"], None),
+                "sporsmalsfrist": format_frist(ekstra.get("sporsmalsfrist_dato"), ekstra.get("sporsmalsfrist_tid")) if len(ekstra) else "",
+                "verdi": format_verdi(lead["lead_verdi"], lead["lead_valuta"]),
+                "lenke": lead["lead_lenke"],
+                "er_kvalifikasjonsfase": bool(ekstra.get("er_kvalifikasjonsfase")) if len(ekstra) else False,
+            }
+            if lead_dict["sporsmalsfrist"] == "ikke oppgitt":
+                lead_dict["sporsmalsfrist"] = ""
+
+            st.markdown(f"**E-post-utkast til {rad['navn']}:**")
+            st.code(draft_email(str(rad["navn"]), lead_dict), language=None)
+
+            if st.button("Marker som sendt"):
                 append_to_kontaktet(pd.DataFrame([{
                     "orgnr": rad["orgnr"], "navn": rad["navn"], "epost": rad["epost"],
                     "doffin_id": valgt_id, "tittel": rad["lead_tittel"],
                 }]))
-                st.success(f"{valgt_navn} markert som kontaktet.")
+                st.success(f"{rad['navn']} markert som kontaktet.")
                 st.cache_data.clear()
                 st.rerun()
 
