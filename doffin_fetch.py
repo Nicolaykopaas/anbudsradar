@@ -45,14 +45,33 @@ def die(msg: str) -> None:
     sys.exit(1)
 
 
-def api_get_json(url: str, params: dict | None = None) -> dict:
+def _get_with_retry(url: str, params: dict | None = None, max_retries: int = 5):
+    """GET with retry/backoff for both 429 and transient network errors
+    (timeouts/connection resets - seen live on the long nationwide fetch)."""
     headers = {"Ocp-Apim-Subscription-Key": API_KEY}
-    while True:
-        resp = requests.get(url, headers=headers, params=params, timeout=30)
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+        except requests.exceptions.RequestException as e:
+            if attempt == max_retries:
+                raise RuntimeError(f"Nettverksfeil mot {url} etter {max_retries} forsok: {e}")
+            wait = min(30, 2 ** attempt)
+            print(f"  Nettverksfeil ({e.__class__.__name__}), forsok {attempt}/{max_retries}, venter {wait}s...")
+            time.sleep(wait)
+            continue
+
         if resp.status_code == 429:
             print("  Rate-limited (429), venter 10s...")
             time.sleep(10)
             continue
+        return resp
+
+    raise RuntimeError(f"Ga opp etter {max_retries} forsok mot {url}")
+
+
+def api_get_json(url: str, params: dict | None = None) -> dict:
+    while True:
+        resp = _get_with_retry(url, params)
         if not resp.ok:
             # RuntimeError (not sys.exit) - a bad response here must be
             # catchable by the per-notice try/except in main(). sys.exit()
@@ -64,13 +83,8 @@ def api_get_json(url: str, params: dict | None = None) -> dict:
 
 
 def api_get_xml(url: str) -> str:
-    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
     while True:
-        resp = requests.get(url, headers=headers, timeout=30)
-        if resp.status_code == 429:
-            print("  Rate-limited (429), venter 10s...")
-            time.sleep(10)
-            continue
+        resp = _get_with_retry(url)
         if not resp.ok:
             raise RuntimeError(f"API-kall feilet ({resp.status_code}) mot {url}: {resp.text[:300]}")
         return resp.text
