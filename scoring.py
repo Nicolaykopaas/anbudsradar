@@ -10,6 +10,7 @@ det ferdige resultatet, aldri regne selv.
 """
 
 from datetime import date, datetime
+from math import radians, sin, cos, asin, sqrt
 
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -41,10 +42,15 @@ def pd_notna(v) -> bool:
     return str(v).strip() not in ("", "nan", "None")
 
 
-def match_score(presisjon: str, lead_kommunenummer, biz_kommunenummer, repetition: float = 1.0) -> dict:
+def match_score(presisjon: str, lead_kommunenummer, biz_kommunenummer) -> dict:
+    # Merk: en tidligere "repetisjon/variasjon"-komponent er fjernet herfra -
+    # den var alltid 1.0 (kontaktet.csv ekskluderer allerede alle en gang
+    # kontaktet, sa det var ingen reell variasjon a male) og blaste opp
+    # scoren med et konstant, misvisende tillegg. Bransje+geo er det
+    # matchscoren faktisk maler i dag.
     bransje = match_bransje_score(presisjon)
     geo = match_geo_score(lead_kommunenummer, biz_kommunenummer)
-    score = 100 * (0.5 * bransje + 0.35 * geo + 0.15 * repetition)
+    score = 100 * (0.6 * bransje + 0.4 * geo)
     if geo == 1.0:
         geo_label = "samme kommune"
     elif geo == 0.55:
@@ -105,6 +111,33 @@ def realism_age_score(stiftelsesdato, registreringsdato) -> tuple[float, str]:
     return 1.0, ""
 
 
+def haversine_km(lat1, lon1, lat2, lon2) -> float:
+    r = 6371.0
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return 2 * r * asin(sqrt(a))
+
+
+def realism_distance_score(lead_postnr, biz_postnr, koordinater: dict) -> tuple[float, str, float | None]:
+    """koordinater: postnummer (str) -> (lat, lon). Returnerer (score, flagg, km)."""
+    lead_k = koordinater.get(str(lead_postnr).zfill(4)) if pd_notna(lead_postnr) else None
+    biz_k = koordinater.get(str(biz_postnr).zfill(4)) if pd_notna(biz_postnr) else None
+    if not lead_k or not biz_k:
+        return 0.7, "", None
+
+    km = haversine_km(lead_k[0], lead_k[1], biz_k[0], biz_k[1])
+    if km <= 30:
+        score = 1.0
+    elif km <= 300:
+        score = _clamp(1.0 - (km - 30) / 270 * 0.6, lo=0.4)  # 1.0 -> 0.4 mellom 30-300 km
+    else:
+        score = _clamp(0.4 - (km - 300) / 1000 * 0.2, lo=0.2)  # 0.4 -> 0.2 videre utover
+    flagg = f"{km:.0f} km unna" if km > 150 else ""
+    return score, flagg, round(km, 0)
+
+
 def realism_orgform_score(organisasjonsform, estimert_verdi) -> tuple[float, str]:
     STOR_KONTRAKT = 5_000_000
     if not pd_notna(estimert_verdi) or float(estimert_verdi) < STOR_KONTRAKT:
@@ -117,20 +150,26 @@ def realism_orgform_score(organisasjonsform, estimert_verdi) -> tuple[float, str
 
 
 def realism_score(estimert_verdi, antall_ansatte, dager_igjen, stiftelsesdato,
-                   registreringsdato, organisasjonsform) -> dict:
+                   registreringsdato, organisasjonsform, lead_postnr=None,
+                   biz_postnr=None, koordinater: dict | None = None) -> dict:
     size, flagg_size = realism_size_score(estimert_verdi, antall_ansatte)
     time_, flagg_time = realism_time_score(dager_igjen)
     age, flagg_age = realism_age_score(stiftelsesdato, registreringsdato)
     orgform, flagg_orgform = realism_orgform_score(organisasjonsform, estimert_verdi)
+    distance, flagg_distance, km = realism_distance_score(lead_postnr, biz_postnr, koordinater or {})
 
-    score = 100 * (0.35 * size + 0.30 * time_ + 0.20 * age + 0.15 * orgform)
+    # Storrelse (kan bedriften i det hele tatt ta jobben) og avstand (kan de
+    # praktisk utfore den der) er de to viktigste - vekter derfor tyngst.
+    score = 100 * (0.30 * size + 0.20 * distance + 0.25 * time_ + 0.15 * age + 0.10 * orgform)
     tier = "Realistisk" if score >= 70 else "Usikker" if score >= 40 else "Urealistisk"
-    flagg = [f for f in (flagg_size, flagg_time, flagg_age, flagg_orgform) if f]
+    flagg = [f for f in (flagg_size, flagg_distance, flagg_time, flagg_age, flagg_orgform) if f]
 
     return {
         "realism_score": round(score, 1),
         "realism_tier": tier,
         "realism_size": size,
+        "realism_distance": distance,
+        "realism_distance_km": km,
         "realism_time": time_,
         "realism_age": age,
         "realism_orgform": orgform,

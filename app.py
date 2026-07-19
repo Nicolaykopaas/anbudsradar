@@ -33,11 +33,16 @@ def last_data() -> pd.DataFrame:
     return last_scores(mtime)
 
 
-st.title("Doffin Leads")
+st.title("📋 Doffin Leads")
 st.caption("Offentlige anbud matchet mot bedrifter — ingenting sendes herfra, kun oversikt og utkast.")
 
-df = last_data()
-df = df[~df["allerede_kontaktet"]]  # kontaktede skal ikke dukke opp som nye forslag
+df = last_data()  # allerede filtrert bort kontaktede bedrifter i compute_scores.py
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Anbud", df["doffin_id"].nunique())
+k2.metric("Foreslatte bedrifter", len(df))
+k3.metric("Sterke matcher", int((df["match_tier"] == "Sterk").sum()))
+k4.metric("Realistiske par", int((df["realism_tier"] == "Realistisk").sum()))
 
 tab_oversikt, tab_kontaktet = st.tabs(["Anbud og matcher", "Kontaktet-historikk"])
 
@@ -60,15 +65,12 @@ with tab_oversikt:
 
     st.write(f"{filtered['doffin_id'].nunique()} anbud, {len(filtered)} bedrift-treff (av {df['doffin_id'].nunique()} anbud totalt).")
 
-    leads = filtered[["doffin_id", "lead_tittel", "lead_oppdragsgiver", "lead_verdi", "lead_frist"]].drop_duplicates("doffin_id")
-    valgt_id = st.selectbox(
-        "Velg et anbud for a se detaljer",
-        options=leads["doffin_id"],
-        format_func=lambda i: leads[leads["doffin_id"] == i]["lead_tittel"].iloc[0] if i in leads["doffin_id"].values else i,
-    ) if len(leads) else None
+    leads = filtered[["doffin_id", "lead_tittel", "lead_oppdragsgiver", "lead_verdi", "lead_frist"]]\
+        .drop_duplicates("doffin_id").sort_values("lead_frist").reset_index(drop=True)
 
-    st.dataframe(
-        leads.sort_values("lead_frist"),
+    st.caption("Klikk pa en rad i tabellen for a se anbefalte bedrifter for det anbudet.")
+    valgt = st.dataframe(
+        leads,
         use_container_width=True,
         column_config={
             "doffin_id": "Anbud-ID",
@@ -78,7 +80,12 @@ with tab_oversikt:
             "lead_frist": "Frist",
         },
         hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="lead_tabell",
     )
+    valgte_rader = valgt.selection.rows if valgt and valgt.selection else []
+    valgt_id = leads.iloc[valgte_rader[0]]["doffin_id"] if valgte_rader else None
 
     if valgt_id:
         st.divider()

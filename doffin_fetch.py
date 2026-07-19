@@ -55,7 +55,12 @@ def api_get_json(url: str, params: dict | None = None) -> dict:
             time.sleep(10)
             continue
         if not resp.ok:
-            die(f"API-kall feilet ({resp.status_code}) mot {url}: {resp.text[:500]}")
+            # RuntimeError (not sys.exit) - a bad response here must be
+            # catchable by the per-notice try/except in main(). sys.exit()
+            # raises SystemExit, which does NOT inherit from Exception, so
+            # it would silently skip that except block and kill the whole
+            # run instead of just skipping one notice.
+            raise RuntimeError(f"API-kall feilet ({resp.status_code}) mot {url}: {resp.text[:500]}")
         return resp.json()
 
 
@@ -68,7 +73,7 @@ def api_get_xml(url: str) -> str:
             time.sleep(10)
             continue
         if not resp.ok:
-            die(f"API-kall feilet ({resp.status_code}) mot {url}: {resp.text[:300]}")
+            raise RuntimeError(f"API-kall feilet ({resp.status_code}) mot {url}: {resp.text[:300]}")
         return resp.text
 
 
@@ -173,28 +178,27 @@ def parse_notice_xml(xml_text: str) -> dict:
     }
 
 
-def fetch_buyer_kommunenummer(orgnr: str, cache: dict) -> str:
-    """Look up a buyer's forretningsadresse.kommunenummer via Brreg's public,
-    unauthenticated Enhetsregisteret API (already used by brreg_fetch.py -
-    same free data source, no new dependency). Cached per orgnr within a run
-    since many notices share the same buyer. Returns "" if not found (e.g.
-    embassies/foreign bodies or non-standard registrations)."""
+def fetch_buyer_kommunenummer(orgnr: str, cache: dict) -> tuple[str, str]:
+    """Look up a buyer's forretningsadresse.kommunenummer + postnummer via
+    Brreg's public, unauthenticated Enhetsregisteret API (already used by
+    brreg_fetch.py - same free data source, no new dependency). Cached per
+    orgnr within a run since many notices share the same buyer. Returns
+    ("", "") if not found (e.g. embassies/foreign bodies or non-standard
+    registrations)."""
     if not orgnr:
-        return ""
+        return "", ""
     if orgnr in cache:
         return cache[orgnr]
 
     try:
         resp = requests.get(BRREG_ENHET_URL.format(orgnr=orgnr), headers={"Accept": "application/json"}, timeout=15)
-        if resp.ok:
-            kommunenummer = (resp.json().get("forretningsadresse") or {}).get("kommunenummer", "")
-        else:
-            kommunenummer = ""
+        addr = resp.json().get("forretningsadresse") or {} if resp.ok else {}
+        result = (addr.get("kommunenummer", ""), addr.get("postnummer", ""))
     except requests.exceptions.RequestException:
-        kommunenummer = ""
+        result = ("", "")
 
-    cache[orgnr] = kommunenummer
-    return kommunenummer
+    cache[orgnr] = result
+    return result
 
 
 def format_deadline(dato: str, tid: str) -> str:
@@ -251,7 +255,10 @@ def main() -> None:
     issue_to = today.isoformat()
 
     print(f"Steg 1: soker bredt {issue_from} -> {issue_to} ...")
-    all_hits = search_all(issue_from, issue_to)
+    try:
+        all_hits = search_all(issue_from, issue_to)
+    except RuntimeError as e:
+        die(str(e))  # sok-steget er reelt fatalt - uten det har vi ingenting a jobbe med
     print(f"Totalt {len(all_hits)} aktive COMPETITION-kunngjoringer i vinduet.")
 
     with open("doffin_search_raw.json", "w", encoding="utf-8") as f:
@@ -297,10 +304,12 @@ def main() -> None:
         detailed_rows.append(row)
         time.sleep(0.5)
 
-    print(f"\nSteg 3: slar opp oppdragsgivers kommunenummer (for bedre geografisk matching) ...")
+    print(f"\nSteg 3: slar opp oppdragsgivers kommunenummer/postnummer (for bedre geografisk matching) ...")
     kommunenummer_cache: dict = {}
     for row in detailed_rows:
-        row["oppdragsgiver_kommunenummer"] = fetch_buyer_kommunenummer(row.get("oppdragsgiver_orgnr", ""), kommunenummer_cache)
+        kommunenummer, postnummer = fetch_buyer_kommunenummer(row.get("oppdragsgiver_orgnr", ""), kommunenummer_cache)
+        row["oppdragsgiver_kommunenummer"] = kommunenummer
+        row["oppdragsgiver_postnummer"] = postnummer
     n_med_kommunenummer = sum(1 for row in detailed_rows if row["oppdragsgiver_kommunenummer"])
     print(f"  {len(kommunenummer_cache)} unike oppdragsgivere slatt opp, {n_med_kommunenummer}/{len(detailed_rows)} kunngjoringer fikk kommunenummer.")
 

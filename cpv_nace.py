@@ -15,7 +15,7 @@ varen (produsent/grossist), ikke bransjen som BRUKER den - f.eks. skal en
 # Nodvendig for CPV-divisjoner som blander helt ulike reelle bransjer
 # (f.eks. divisjon 39 dekker bade mobler OG renholdsprodukter).
 CPV_GROUP_TO_NACE = {
-    "3980": ["20", "46"],   # renholdsprodukter -> kjemisk produksjon/engros, ikke mobler
+    "3980": ["20"],         # renholdsprodukter -> kjemisk produksjon (fjernet bred "46" - traff feil engros-type)
     "9240": ["63"],         # pressetjenester -> informasjonstjenester, ikke kultur/fritid
     "7962": ["78"],         # vikartjenester -> utleie av arbeidskraft
     "7963": ["78"],         # ovrig personellformidling
@@ -27,7 +27,7 @@ CPV_GROUP_TO_NACE = {
     "9051": ["38"],         # avfallsbehandling
     "9050": ["38"],         # avhending av utstyr -> avfall/gjenvinning
     "9040": ["37"],         # VA-tjenester -> avlopsrensing
-    "3314": ["46.46", "32"],  # dentale/medisinske forbruksvarer -> apotek/medisinsk engros
+    "3314": ["46.46", "32.5"],  # dentale/medisinske forbruksvarer -> apotek/medisinsk engros (fjernet bred "32" - traff bl.a. smykkeproduksjon)
 }
 
 # CPV (2-sifret divisjon) -> NACE (divisjon eller mer spesifikk kode).
@@ -42,7 +42,7 @@ CPV_TO_NACE = {
     "30": ["26", "46", "62"],
     "31": ["27"],
     "32": ["26", "61"],
-    "33": ["32", "46.4"],
+    "33": ["32.5", "46.4"],  # medisinsk utstyr - kun medisinske/tanntekniske instrumenter (32.5), ikke all "annen industriproduksjon" (32)
     "34": ["45", "29", "30"],
     "35": ["25", "26", "27", "28", "80"],
     "37": ["32"],
