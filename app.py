@@ -17,7 +17,7 @@ import streamlit as st
 
 from marker_sendt import append_to_kontaktet
 
-st.set_page_config(page_title="AnbudsRadar", page_icon="📡", layout="wide")
+st.set_page_config(page_title="AnbudsRadar", layout="wide")
 
 
 @st.cache_data
@@ -34,26 +34,26 @@ def last_data() -> pd.DataFrame:
     return last_scores(mtime)
 
 
-st.title("📡 AnbudsRadar")
+st.title("AnbudsRadar")
 st.caption("Ingenting sendes herfra — kun oversikt og utkast.")
 
 df = last_data()  # allerede filtrert bort kontaktede bedrifter i compute_scores.py
 
 STORRELSE_GRENSER = {
     "Alle størrelser": (0, float("inf")),
-    "Små (under 5 mill kr)": (0, 5_000_000),
-    "Middels (5-50 mill kr)": (5_000_000, 50_000_000),
-    "Store (over 50 mill kr)": (50_000_000, float("inf")),
+    "Små, under 5 mill kr": (0, 5_000_000),
+    "Middels, 5-50 mill kr": (5_000_000, 50_000_000),
+    "Store, over 50 mill kr": (50_000_000, float("inf")),
 }
 
-with st.expander("🔍 Filtre — hva som teller for match- og realismescoren", expanded=True):
+with st.expander("Filtre — hva som teller for match- og realismescoren", expanded=True):
     r1c1, r1c2, r1c3 = st.columns(3)
     with r1c1:
         geo_valg = st.selectbox("Geografisk treff", ["Alle", "Minst samme fylke", "Kun samme kommune"])
     with r1c2:
-        kun_presis_bransje = st.checkbox("Kun presis bransjematch (ikke bred fallback)")
+        kun_presis_bransje = st.checkbox("Kun presis bransjematch")
     with r1c3:
-        kun_etablert = st.checkbox("Kun etablerte bedrifter (2+ år)")
+        kun_etablert = st.checkbox("Kun etablerte bedrifter, minst 2 år")
 
     r2c1, r2c2, r2c3 = st.columns(3)
     with r2c1:
@@ -61,7 +61,7 @@ with st.expander("🔍 Filtre — hva som teller for match- og realismescoren", 
     with r2c2:
         vanskelighet_valg = st.selectbox("Vanskelighetsgrad", ["Alle", "Lett", "Middels", "Vanskelig"])
     with r2c3:
-        maks_avstand = st.slider("Maks avstand (km)", 0, 800, 800, help="Ukjent avstand vises alltid")
+        maks_avstand = st.slider("Maks avstand i km", 0, 800, 800, help="Ukjent avstand vises alltid")
 
     bransje_filter = st.text_input("Fritekst: bransje")
     kommune_filter = st.text_input("Fritekst: kommune")
@@ -113,7 +113,7 @@ with tab_oversikt:
                 "doffin_id": None,
                 "lead_tittel": "Tittel",
                 "lead_oppdragsgiver": "Oppdragsgiver",
-                "lead_verdi": st.column_config.NumberColumn("Verdi (kr)", format="%.0f"),
+                "lead_verdi": st.column_config.NumberColumn("Verdi i kr", format="%.0f"),
                 "lead_frist": "Frist",
             },
             hide_index=True,
@@ -157,7 +157,7 @@ with tab_oversikt:
 
             valgt_navn = st.selectbox("Marker en bedrift som sendt", kandidater["navn"], index=None,
                                        placeholder="Velg bedrift ...")
-            if valgt_navn and st.button("✅ Marker som sendt"):
+            if valgt_navn and st.button("Marker som sendt"):
                 rad = kandidater[kandidater["navn"] == valgt_navn].iloc[0]
                 append_to_kontaktet(pd.DataFrame([{
                     "orgnr": rad["orgnr"], "navn": rad["navn"], "epost": rad["epost"],
