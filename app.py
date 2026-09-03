@@ -49,7 +49,7 @@ def lead_detaljer() -> pd.DataFrame:
 
 
 st.title("AnbudsRadar")
-st.caption("Ingenting sendes herfra — kun oversikt og utkast.")
+st.caption("Ingenting sendes herfra, kun oversikt og utkast.")
 
 df = last_data()  # allerede filtrert bort kontaktede bedrifter i compute_scores.py
 
@@ -60,7 +60,7 @@ STORRELSE_GRENSER = {
     "Store, over 50 mill kr": (50_000_000, float("inf")),
 }
 
-with st.expander("Filtre — hva som teller for match- og realismescoren", expanded=True):
+with st.expander("Filtre, hva som teller for match- og realismescoren", expanded=True):
     r1c1, r1c2, r1c3 = st.columns(3)
     with r1c1:
         geo_valg = st.selectbox("Geografisk treff", ["Alle", "Minst samme fylke", "Kun samme kommune"])

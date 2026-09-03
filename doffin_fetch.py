@@ -293,7 +293,7 @@ def write_readable_summary(rows: list[dict], path: str) -> None:
         sporsmal = format_deadline(r.get('sporsmalsfrist_dato', ''), r.get('sporsmalsfrist_tid', ''))
         if sporsmal != "Ikke oppgitt":
             lines.append(f"- **Frist for å stille spørsmål:** {sporsmal}")
-        lines.append(f"- **Kontaktperson for spørsmål:** {r.get('kontakt_navn', '')} — {r.get('kontakt_telefon', '')} — {r.get('kontakt_epost', '')}")
+        lines.append(f"- **Kontaktperson for spørsmål:** {r.get('kontakt_navn', '')}, {r.get('kontakt_telefon', '')}, {r.get('kontakt_epost', '')}")
         lines.append(f"- **Se hele kunngjøringen:** {r.get('lenke', '')}")
         if beskrivelse:
             lines.append("")
