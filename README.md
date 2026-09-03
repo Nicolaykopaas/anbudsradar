@@ -4,7 +4,7 @@ Finner offentlige anbud i Norge og matcher dem mot bedrifter som faktisk kan ta 
 
 ![Dashbordet](screenshots/dashbord.png)
 
-## Nøkkeltall
+## Tall
 
 | | |
 |---|---|
@@ -27,11 +27,11 @@ Python og pandas for uthenting og scoring. Streamlit for dashbordet. Doffin og B
 
 Ingenting sendes automatisk. E-postene er utkast du leser gjennom selv.
 
-## Slik ble det bygget og verifisert
+## Hvordan det ble til
 
-Bygget agentisk med Claude Code. Jeg bryter ned problemet, styrer implementasjonen og går gjennom det som kommer ut. Koden får ikke stå før jeg har sett den virke mot ekte data.
+Koden er i hovedsak skrevet av Claude Code, som jeg styrer. Jeg deler opp problemet, bestemmer retningen og går gjennom resultatet før noe blir stående.
 
-Det viktigste jeg fant ved å teste mot live data, ikke ved å lese kode:
+Mesteparten av tiden min på dette prosjektet gikk likevel ikke med til koden. Den gikk med til å oppdage at matchingen tok feil. Disse tre tingene fant jeg bare ved å kjøre mot ekte data:
 
 * Det finnes ingen offisiell kobling mellom EUs anbudskoder (CPV) og norske næringskoder (NACE). Jeg bygde tabellen for hånd og justerte den mot ekte treff til feilmatchene forsvant. En gullsmed som fikk tilbud om et sykehjemsanbud var signalet på at den ikke var ferdig.
 * Norge følger ikke EU-standarden for NACE. Bilbransjen er tydeligst: EU sier kode 45, Brreg bruker 46 og 47 for handel og 95 for verksted. Kode 45 ga null treff i hele Norge.
