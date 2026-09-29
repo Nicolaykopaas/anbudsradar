@@ -21,6 +21,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Restore Brreg checkpoint (resume after a failed/timed-out run)
+        uses: actions/cache@v4
+        with:
+          path: brreg_checkpoint_*.jsonl
+          key: brreg-checkpoint-${{ github.run_id }}
+          restore-keys: |
+            brreg-checkpoint-
+
       - name: Run pipeline
         env:
           DOFFIN_API_KEY: ${{ secrets.DOFFIN_API_KEY }}
